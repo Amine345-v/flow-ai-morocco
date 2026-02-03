@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import os
+import json
 from lark import Tree, Token
 import asyncio
 
@@ -20,6 +22,14 @@ except Exception:  # pragma: no cover - optional dependency
 from .parser import parse
 from .semantic import SemanticAnalyzer
 from .errors import RuntimeFlowError
+from .types import TypedValue, ValueTag
+from .ai_providers import select_provider
+
+# Optional OpenAI client import for AI-backed execution
+try:  # pragma: no cover - optional dependency
+    from openai import OpenAI as _OpenAIClient
+except Exception:  # pragma: no cover - optional dependency
+    _OpenAIClient = None
 
 @dataclass
 class EvalContext:
@@ -46,6 +56,19 @@ class Runtime:
         self.roles: Dict[str, Dict[str, Any]] = {}
         self.metrics: Dict[str, Any] = {"actions": 0, "checkpoints": 0, "back_to": 0, "verbs": {}, "checkpoint_ms": {}}
         self.tracer = _otel_tracer
+        # AI execution wiring: enabled when OpenAI client available and API key set
+        self.ai_client = _OpenAIClient() if (_OpenAIClient and os.getenv("OPENAI_API_KEY")) else None
+        # Default model and per-verb mapping; can be overridden by env vars
+        self.ai_default_model = os.getenv("FLOWLANG_AI_MODEL", "gpt-3.5-turbo")
+        # Allow a simple per-verb override via env, e.g. FLOWLANG_AI_MODEL_SEARCH
+        self.ai_model_per_verb: Dict[str, str] = {
+            "ask": os.getenv("FLOWLANG_AI_MODEL_ASK", self.ai_default_model),
+            "search": os.getenv("FLOWLANG_AI_MODEL_SEARCH", self.ai_default_model),
+            "try": os.getenv("FLOWLANG_AI_MODEL_TRY", self.ai_default_model),
+            "judge": os.getenv("FLOWLANG_AI_MODEL_JUDGE", self.ai_default_model),
+        }
+        # Multi-provider selector (OpenAI → Anthropic → Gemini → Mistral → Cohere → Azure → OpenRouter → Ollama)
+        self.ai_provider = select_provider()
 
     def log(self, msg: str):
         self.console.append(msg)
@@ -633,7 +656,7 @@ class Runtime:
         if op == "run":
             task = args[0] if args else kwargs.get("task", "")
             # simulate external tool execution
-            result = {"type": "TryResult", "output": f"tool:{name}:{task}", "metrics": {"time": 0.5}}
+            result = TypedValue(tag=ValueTag.TryResult, meta={"output": f"tool:{name}:{task}", "metrics": {"time": 0.5}})
             ctx.variables["_"] = result
             self.metrics["actions"] += 1
             self.metrics["verbs"]["tool.run"] = self.metrics["verbs"].get("tool.run", 0) + 1
@@ -662,37 +685,174 @@ class Runtime:
                         # positional
                         v = self._eval_expr(item.children[0], ctx)
                         args.append(v)
+        if verb == "ask":
+            # تحديث سجل الحوار الذاتي في السياق
+            prev = ctx.variables.get("__monologue_history__", [])
+            prompt = args[0] if args else kwargs.get("prompt", "")
+            prev.append(str(prompt))
+            kwargs["history"] = prev
         member_idx = self._select_team_member(team)
         if self.tracer:
             with self.tracer.start_as_current_span(f"action:{team}.{verb}"):
-                result = self._fake_command(team, verb, args, kwargs, member_idx)
+                # Prefer unified provider first, then fall back to OpenAI client path, then fake
+                if self.ai_provider:
+                    result = self.ai_provider.execute(team, verb, args, kwargs)
+                elif self.ai_client:
+                    result = self._ai_command(team, verb, args, kwargs, member_idx)
+                else:
+                    result = self._fake_command(team, verb, args, kwargs, member_idx)
         else:
-            result = self._fake_command(team, verb, args, kwargs, member_idx)
-        # convention: assign to implicit _ last value
+            if self.ai_provider:
+                result = self.ai_provider.execute(team, verb, args, kwargs)
+            elif self.ai_client:
+                result = self._ai_command(team, verb, args, kwargs, member_idx)
+            else:
+                result = self._fake_command(team, verb, args, kwargs, member_idx)
+        ctx.variables["__monologue_history__"] = kwargs.get("history", [])
         ctx.variables["_"] = result
         self.metrics["actions"] += 1
         self.metrics["verbs"][verb] = self.metrics["verbs"].get(verb, 0) + 1
         self.log(f"[{team}#{member_idx}.{verb}] -> {result}")
 
+    def _ai_command(self, team: str, verb: str, args: List[Any], kwargs: Dict[str, Any], member_idx: int | None = None) -> Any:
+        """Execute a verb through an AI model. All teams route here; team is only contextual.
+
+        This uses OpenAI chat.completions synchronously via the official client. If the model
+        returns JSON and we can parse it, we map it into the expected TypedValue meta; otherwise,
+        we wrap the raw text content.
+        """
+        if not self.ai_client:
+            return self._fake_command(team, verb, args, kwargs, member_idx)
+
+        # Choose model per verb with fallback
+        model = self.ai_model_per_verb.get(verb, self.ai_default_model)
+
+        # Build structured instruction to encourage JSON outputs compatible with our ValueTags
+        system_prompts: Dict[str, str] = {
+            "ask": (
+                "You are a helpful assistant. Answer clearly. Respond with JSON: {\n"
+                "  \"text\": string,\n  \"history\": array\n}"
+            ),
+            "search": (
+                "You are an information retrieval agent. Return JSON: {\n"
+                "  \"hits\": array of strings\n} with representative URIs or titles."
+            ),
+            "try": (
+                "You execute tasks and report results. Respond with JSON: {\n"
+                "  \"output\": string,\n  \"metrics\": {\"time\": number}\n}"
+            ),
+            "judge": (
+                "You evaluate against criteria and return JSON: {\n"
+                "  \"score\": number,\n  \"confidence\": number,\n  \"pass\": boolean\n}"
+            ),
+        }
+        system_msg = system_prompts.get(verb, "You are an AI that executes the requested command. Prefer JSON outputs.")
+
+        # Compose user message based on verb/args/kwargs
+        # Preserve the existing 'ask' history flow if provided
+        if verb == "ask":
+            prompt = args[0] if args else kwargs.get("prompt", "")
+            history = kwargs.get("history", [])
+            user_content = {
+                "verb": verb,
+                "team": team,
+                "prompt": str(prompt),
+                "history": list(history) if isinstance(history, list) else [],
+                "options": {k: v for k, v in kwargs.items() if k not in ("prompt", "history")},
+            }
+        elif verb == "search":
+            query = args[0] if args else kwargs.get("query", "")
+            user_content = {"verb": verb, "team": team, "query": str(query), "options": kwargs}
+        elif verb == "try":
+            task = args[0] if args else kwargs.get("task", "")
+            user_content = {"verb": verb, "team": team, "task": str(task), "options": kwargs}
+        elif verb == "judge":
+            target = args[0] if args else kwargs.get("target", "")
+            criteria = args[1] if len(args) > 1 else kwargs.get("criteria", "score")
+            user_content = {"verb": verb, "team": team, "target": target, "criteria": criteria, "options": kwargs}
+        else:
+            user_content = {"verb": verb, "team": team, "args": args, "options": kwargs}
+
+        # Call the model
+        try:
+            resp = self.ai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": json.dumps(user_content)},
+                ],
+                temperature=float(kwargs.get("temperature", 0.7)) if isinstance(kwargs.get("temperature", 0.7), (int, float)) else 0.7,
+                max_tokens=int(kwargs.get("max_tokens", 1000)) if str(kwargs.get("max_tokens", "")).isdigit() else 1000,
+            )
+            content = resp.choices[0].message.content if resp and resp.choices else ""
+        except Exception as e:  # pragma: no cover - external dependency runtime error path
+            # On any API error, surface a typed error as Unknown
+            return TypedValue(tag=ValueTag.Unknown, meta={"error": str(e), "verb": verb, "args": args, "kwargs": kwargs})
+
+        # Try to parse JSON content
+        parsed: Any
+        try:
+            parsed = json.loads(content) if content else {}
+        except Exception:
+            parsed = None
+
+        # Map to typed values
+        if verb == "ask":
+            if isinstance(parsed, dict) and ("text" in parsed or "history" in parsed):
+                meta = {"text": parsed.get("text", content or ""), "history": parsed.get("history", kwargs.get("history", []))}
+            else:
+                meta = {"text": content, "history": kwargs.get("history", [])}
+            return TypedValue(tag=ValueTag.CommunicateResult, meta=meta)
+        if verb == "search":
+            if isinstance(parsed, dict) and "hits" in parsed:
+                meta = {"hits": parsed.get("hits", [])}
+            else:
+                # Fallback: single string content as one hit
+                meta = {"hits": [content] if content else []}
+            return TypedValue(tag=ValueTag.SearchResult, meta=meta)
+        if verb == "try":
+            if isinstance(parsed, dict) and ("output" in parsed or "metrics" in parsed):
+                meta = {"output": parsed.get("output", content or ""), "metrics": parsed.get("metrics", {})}
+            else:
+                meta = {"output": content, "metrics": {}}
+            return TypedValue(tag=ValueTag.TryResult, meta=meta)
+        if verb == "judge":
+            if isinstance(parsed, dict) and ("score" in parsed or "confidence" in parsed or "pass" in parsed):
+                score = parsed.get("score", 0.0)
+                conf = parsed.get("confidence", 0.0)
+                passed = parsed.get("pass", bool(score))
+            else:
+                score = 0.0
+                conf = 0.0
+                passed = False
+            return TypedValue(tag=ValueTag.JudgeResult, meta={"score": score, "confidence": conf, "pass": passed})
+
+        # Unknown verbs: return textual content wrapped
+        return TypedValue(tag=ValueTag.Unknown, meta={"text": content, "args": args, "kwargs": kwargs})
+
     def _fake_command(self, team: str, verb: str, args: List[Any], kwargs: Dict[str, Any], member_idx: int | None = None) -> Any:
         # Prototype mock implementations
         if verb == "ask":
             prompt = args[0] if args else kwargs.get("prompt", "")
-            return {"type": "CommunicateResult", "text": str(prompt)}
+            # دعم سجل الحوار الذاتي
+            history = kwargs.get("history")
+            if not history:
+                history = []
+            history.append(str(prompt))
+            return TypedValue(tag=ValueTag.CommunicateResult, meta={"text": str(prompt), "history": history})
         if verb == "search":
             query = args[0] if args else kwargs.get("query", "")
-            return {"type": "SearchResult", "hits": [f"doc://{i}:{query}" for i in range(3)]}
+            return TypedValue(tag=ValueTag.SearchResult, meta={"hits": [f"doc://{i}:{query}" for i in range(3)]})
         if verb == "try":
             descr = args[0] if args else kwargs.get("task", "")
-            return {"type": "TryResult", "output": f"ran:{descr}", "metrics": {"time": 1.23}}
+            return TypedValue(tag=ValueTag.TryResult, meta={"output": f"ran:{descr}", "metrics": {"time": 1.23}})
         if verb == "judge":
             target = args[0] if args else kwargs.get("target", None)
             crit = args[1] if len(args) > 1 else kwargs.get("criteria", "score")
-            # fabricate a confidence based on simple heuristic
             conf = 0.85 if target else 0.6
             passed = conf >= 0.7
-            return {"type": "JudgeResult", "score": 0.8 if passed else 0.5, "confidence": conf, "pass": passed}
-        return {"type": "Unknown", "args": args, "kwargs": kwargs}
+            return TypedValue(tag=ValueTag.JudgeResult, meta={"score": 0.8 if passed else 0.5, "confidence": conf, "pass": passed})
+        return TypedValue(tag=ValueTag.Unknown, meta={"args": args, "kwargs": kwargs})
 
     def _select_team_member(self, team: str) -> int:
         info = self.teams.get(team)
@@ -755,7 +915,6 @@ class Runtime:
                 # support team.method(...) in expressions
                 base_node = node.children[0]
                 base_val = self._eval_expr(base_node, ctx)
-                # process member_access children if any
                 accum = base_val
                 # Detect pattern: NAME . VERB (args) where NAME is a known team
                 if isinstance(base_node, Tree) and base_node.data == "name":
@@ -781,7 +940,13 @@ class Runtime:
                     if isinstance(acc, Tree):
                         if acc.data == "field":
                             fld = str(acc.children[0])
-                            if isinstance(accum, dict):
+                            # تعديل: إذا كان accum من نوع TypedValue، نصل للـ meta
+                            if isinstance(accum, TypedValue):
+                                if accum.meta and fld in accum.meta:
+                                    accum = accum.meta[fld]
+                                else:
+                                    raise RuntimeFlowError(f"Field '{fld}' not found on TypedValue {accum}")
+                            elif isinstance(accum, dict):
                                 if fld in accum:
                                     accum = accum[fld]
                                 else:

@@ -21,7 +21,8 @@ type_expr: type_atom
 
 ?start: program
 
-program: top_decl*
+// تحديث البرنامج لقبول تعريف الوكلاء
+program: agent_decl* top_decl*
 
 top_decl: type_decl
         | role_decl
@@ -32,6 +33,7 @@ top_decl: type_decl
         | flow_decl
         | resource_decl
         | result_decl
+        | agent_decl
 
 // ---------- Types / Roles / Policies ----------
 
@@ -210,3 +212,7 @@ dict_literal: "{" dict_kv_list? "}"
 dict_kv_list: dict_kv ("," dict_kv)*
 
 dict_kv: (STRING|IDENT) ":" expr
+
+// ---------- Agents ----------
+// دعم هيكلي لتعريف وكلاء الذكاء الاصطناعي أو أي وكيل مخصص
+agent_decl: "agent" IDENT ":" STRING ";"

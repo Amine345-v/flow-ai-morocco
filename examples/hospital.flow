@@ -1,0 +1,90 @@
+// FlowLang Example: Hospital Management System
+
+// Agent Model: تعريف الوكلاء الأساسيين في النظام
+agent DiagnosisAgent: يدير عمليات التشخيص، يمثل الفريق الطبي المختص بالتشخيص.
+agent ResourceAgent: يدير الموارد (أسرة، أطباء، أدوية)، يمثل فريق إدارة الموارد.
+agent ExecutionAgent: مسؤول عن تنفيذ الإجراءات (حجز، فواتير، إلخ)، يمثل فريق التنفيذ.
+// agent LLM_Agent: وكيل ذكاء اصطناعي عام لتحليل النصوص الطبية واقتراح قرارات.
+// ملاحظة: هذا الوكيل يمثل النواة الأساسية لأي وكيل ذكاء اصطناعي (مثل GPT أو Gemini أو غيرها)، ويمكن تخصيصه أو توسيعه حسب الحاجة.
+agent LLM_Agent: وكيل ذكاء اصطناعي عام لتحليل النصوص الطبية واقتراح قرارات.
+
+result JudgeResult {
+  match: boolean;
+  protocol: string;
+  latency: number;
+  notes: string;
+};
+result SearchResult {
+  beds: number;
+  doctors: list;
+  drugs: list;
+};
+result TryResult {
+  status: string;
+  bill: number;
+  record_id: string;
+};
+result CommunicateResult {
+  text: string;
+  history: list;
+};
+
+team DiagnosisTeam: Command<Judge> [size=2, agent=DiagnosisAgent];
+team ResourceTeam: Command<Search> [size=1, agent=ResourceAgent];
+team ExecutionTeam: Command<Try> [size=2, agent=ExecutionAgent];
+team LLMTeam: Command<Communicate> [size=1, agent=LLM_Agent];
+
+chain PatientFlowChain [agent=DiagnosisAgent] {
+  nodes: [Reception, Examination, Treatment];
+  propagation: causal(decay=0.7, backprop=true, forward=true);
+  labels: { critical: "true" };
+  constraints: { min_beds: 1; require_protocol: true; };
+}
+
+process HospitalTree "Hospital System" [agent=ResourceAgent] {
+  root: "QualityCare";
+  branch "Emergency" -> ["ER", "ICU"];
+  branch "Archive" -> ["PaperRecords"];
+  node "ER" { activity: "high" };
+  node "PaperRecords" { status: "inactive" };
+  policy: { compliance: "strict" };
+  audit: enabled;
+}
+
+flow PatientAdmission(using: DiagnosisTeam, ResourceTeam, ExecutionTeam, LLMTeam) {
+  merge_policy: deep_merge;
+
+  checkpoint "Reception" {
+    S1 = ResourceTeam.search("طبيب طوارئ متاح؟");
+    context.update(S1);
+  }
+
+  checkpoint "Examination" {
+    C1 = ResourceTeam.search("توفر الأسرة والأدوية");
+    M1 = ExecutionTeam.try("حجز موعد للطوارئ");
+    D1 = DiagnosisTeam.judge(C1, "مطابقة الأعراض بالبروتوكولات الطبية");
+    context.update(C1, M1, D1);
+    // Monolith Communicate: تحليل التاريخ المرضي
+    report = DiagnosisTeam.ask("حلل التاريخ المرضي مع الأعراض الحالية واقترح فحوصات");
+    context.update(report);
+    // LLM Agent: تحليل متقدم بواسطة وكيل ذكاء اصطناعي عام
+    ai_report = LLMTeam.ask("حلل بيانات المريض واقترح خطة علاجية متقدمة");
+    context.update(ai_report);
+  }
+
+  checkpoint "Treatment" {
+    T1 = ExecutionTeam.try("إصدار فاتورة العلاج");
+    J2 = DiagnosisTeam.judge(T1, "المصادقة على خطة العلاج");
+    context.update(T1, J2);
+    // Ripple effect: إذا حدث نقص دواء
+    if (J2.meta["notes"] == "نقص دواء") {
+      flow.back_to("Reception");
+      S2 = ResourceTeam.search("بحث عن بديل للدواء");
+      context.update(S2);
+    }
+    // النشاط الحصري: تعديل فقط في حلقة التوريد والعلاج
+    // باقي السجلات المالية والإدارية تبقى ثابتة
+    ProductTree.mark("ER", "active");
+    ProductTree.audit();
+  }
+}

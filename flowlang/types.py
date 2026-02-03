@@ -26,9 +26,12 @@ class ValueTag(str, Enum):
     TryResult = "TryResult"
     JudgeResult = "JudgeResult"  # has .confidence
     CommunicateResult = "CommunicateResult"
+    Option = "Option"
+    Union = "Union"
 
 @dataclass
 class TypedValue:
     tag: ValueTag
+    value: Any = None
     meta: Optional[Dict[str, Any]] = None
 
