@@ -359,7 +359,54 @@ class Runtime:
             if isinstance(ch, Tree) and ch.data in ("expr", "or_expr", "and_expr", "cmp_expr", "add_expr", "mul_expr", "unary_expr", "primary"):
                 effect = self._eval_expr(ch, ctx)
                 break
-        self.log(f"[chain.touch] {chain_name}.{node_name} effect={effect}")
+        # Default effect if not provided
+        if effect is None:
+            effect = 1.0
+        # Apply effect and propagate using the chain's configured propagation policy
+        ch = self.chains.get(chain_name)
+        if not ch:
+            raise RuntimeFlowError(f"Unknown chain '{chain_name}'")
+        if str(node_name) not in ch["nodes"]:
+            raise RuntimeFlowError(f"Chain '{chain_name}' has no node '{node_name}'")
+        ch["effects"][str(node_name)] = effect
+        order = ch["order"]
+        decay = float(ch["propagation"].get("decay", 0.6))
+        do_fwd = bool(ch["propagation"].get("forward", True))
+        do_bwd = bool(ch["propagation"].get("backprop", True))
+        cap = ch["propagation"].get("cap")
+        try:
+            idx = order.index(str(node_name))
+        except ValueError:
+            idx = None
+        if idx is not None:
+            # forward diffusion
+            if do_fwd:
+                cur = effect
+                j = idx + 1
+                while j < len(order):
+                    # numeric decay only if numeric
+                    if isinstance(cur, (int, float)):
+                        cur = float(cur) * decay
+                        if cap is not None and isinstance(cap, (int, float)) and cur < float(cap):
+                            break
+                        ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0))
+                    else:
+                        ch["effects"][order[j]] = cur
+                    j += 1
+            # backward diffusion
+            if do_bwd:
+                cur = effect
+                j = idx - 1
+                while j >= 0:
+                    if isinstance(cur, (int, float)):
+                        cur = float(cur) * decay
+                        if cap is not None and isinstance(cap, (int, float)) and cur < float(cap):
+                            break
+                        ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0))
+                    else:
+                        ch["effects"][order[j]] = cur
+                    j -= 1
+        self.log(f"[chain.touch] {chain_name}.{node_name} effect={effect} (decay={decay}, cap={cap}, fwd={do_fwd}, bwd={do_bwd})")
 
     def _exec_deploy(self, node: Tree, ctx: EvalContext):
         model = node.children[0].value
@@ -602,6 +649,7 @@ class Runtime:
             decay = float(ch["propagation"].get("decay", 0.6))
             do_fwd = bool(ch["propagation"].get("forward", True))
             do_bwd = bool(ch["propagation"].get("backprop", True))
+            cap = ch["propagation"].get("cap")
             try:
                 idx = order.index(str(node))
             except ValueError:
@@ -612,16 +660,26 @@ class Runtime:
                     cur = eff
                     j = idx + 1
                     while j < len(order):
-                        cur = float(cur) * decay
-                        ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0)) if isinstance(cur, (int, float)) else cur
+                        if isinstance(cur, (int, float)):
+                            cur = float(cur) * decay
+                            if cap is not None and isinstance(cap, (int, float)) and cur < float(cap):
+                                break
+                            ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0))
+                        else:
+                            ch["effects"][order[j]] = cur
                         j += 1
                 # backward
                 if do_bwd:
                     cur = eff
                     j = idx - 1
                     while j >= 0:
-                        cur = float(cur) * decay
-                        ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0)) if isinstance(cur, (int, float)) else cur
+                        if isinstance(cur, (int, float)):
+                            cur = float(cur) * decay
+                            if cap is not None and isinstance(cap, (int, float)) and cur < float(cap):
+                                break
+                            ch["effects"][order[j]] = max(cur, ch["effects"].get(order[j], 0))
+                        else:
+                            ch["effects"][order[j]] = cur
                         j -= 1
             self.log(f"[chain] {name}.propagate {node} effect={eff} with decay={decay}")
             return
@@ -632,6 +690,17 @@ class Runtime:
         if op == "mark":
             node = args[0] if args else kwargs.get("node")
             status = args[1] if len(args) > 1 else kwargs.get("status")
+            # Policies: require_reason (bool), allowed_status (STRING comma-separated)
+            policies = pr.get("policies", {})
+            if policies.get("require_reason"):
+                reason = kwargs.get("reason")
+                if not reason:
+                    raise RuntimeFlowError(f"Process '{name}': mark requires 'reason' per policy")
+            allowed = policies.get("allowed_status")
+            if isinstance(allowed, str) and allowed:
+                allowed_set = {s.strip() for s in allowed.split(",")}
+                if str(status) not in allowed_set:
+                    raise RuntimeFlowError(f"Process '{name}': status '{status}' not allowed (policy)")
             pr["marks"][str(node)] = status
             self.log(f"[process] {name}.mark {node}={status}")
             return
@@ -640,12 +709,27 @@ class Runtime:
             children = args[1] if len(args) > 1 else kwargs.get("children", [])
             if not isinstance(children, list):
                 children = [children]
+            # Policy: max_children (number)
+            policies = pr.get("policies", {})
+            max_children = policies.get("max_children")
+            if isinstance(max_children, (int, float)):
+                if len(children) > int(max_children):
+                    raise RuntimeFlowError(f"Process '{name}': expand exceeds max_children policy ({max_children})")
             for c in children:
                 pr["nodes"].setdefault(str(c), {})
             self.log(f"[process] {name}.expand {parent} -> {children}")
             return
         if op == "collapse":
             node = args[0] if args else kwargs.get("node")
+            # Policies: audit_required (bool), protected_nodes (STRING comma-separated)
+            policies = pr.get("policies", {})
+            prot = policies.get("protected_nodes")
+            if isinstance(prot, str) and prot:
+                if str(node) in {s.strip() for s in prot.split(",")}:
+                    raise RuntimeFlowError(f"Process '{name}': node '{node}' is protected (policy)")
+            if policies.get("audit_required"):
+                if pr["marks"].get(str(node)) != "audited":
+                    raise RuntimeFlowError(f"Process '{name}': collapse requires audited status (policy)")
             pr["nodes"].pop(str(node), None)
             self.log(f"[process] {name}.collapse {node}")
             return

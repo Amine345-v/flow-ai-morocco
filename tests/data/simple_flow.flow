@@ -1,0 +1,20 @@
+// A simple flow for testing
+flow simple_flow(dev_team, test_team) {
+    checkpoint "develop" {
+        dev_team: write_code()
+        test_team: review_code()
+    }
+    
+    checkpoint "test" {
+        test_team: run_tests()
+    }
+    
+    checkpoint "deploy" {
+        dev_team: deploy(env="production")
+        test_team: smoke_test()
+    }
+}
+
+// Define teams
+team dev_team: Command<Dev>;
+team test_team: Command<Test>;

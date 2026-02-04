@@ -1,0 +1,12 @@
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-benchmark>=3.4.1
+pytest-mock>=3.10.0
+pytest-xdist>=2.5.0
+coverage>=6.2
+mypy>=0.910
+flake8>=4.0.1
+black>=21.12b0
+isort>=5.10.1
+bandit>=1.7.0
+safety>=1.10.3

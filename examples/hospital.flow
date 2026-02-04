@@ -39,7 +39,13 @@ process HospitalTree "Hospital System" {
   branch "Archive" -> ["PaperRecords"];
   node "ER" { activity: "high" };
   node "PaperRecords" { status: "inactive" };
-  policy: { compliance: "strict" };
+  policy: {
+    require_reason: true;
+    allowed_status: "open,in_progress,audited,closed";
+    max_children: 2;
+    protected_nodes: "QualityCare";
+    audit_required: true;
+  };
   audit: enabled;
 }
 
@@ -62,6 +68,14 @@ flow PatientAdmission(using: DiagnosisTeam, ResourceTeam, ExecutionTeam, LLMTeam
     // LLM Agent: تحليل متقدم بواسطة وكيل ذكاء اصطناعي عام
     ai_report = LLMTeam.ask("حلل بيانات المريض واقترح خطة علاجية متقدمة");
     context.update(ai_report);
+  }
+
+  // Demonstrate process policy enforcement
+  checkpoint "ProcessOpsDemo" {
+    HospitalTree.mark("ER", "in_progress", reason="triage start");
+    HospitalTree.expand("Emergency", ["Ward1", "Ward2"]);
+    HospitalTree.mark("Archive", "audited", reason="QA pass");
+    HospitalTree.collapse("Archive");
   }
 
   checkpoint "Treatment" {
