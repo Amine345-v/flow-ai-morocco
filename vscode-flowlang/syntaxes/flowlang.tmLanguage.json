@@ -1,0 +1,117 @@
+{
+    "name": "FlowLang",
+    "scopeName": "source.flowlang",
+    "fileTypes": ["flow"],
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#brackets"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.flowlang",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.flowlang",
+                    "begin": "/\\*",
+                    "end": "\\*/",
+                    "patterns": [
+                        {
+                            "name": "comment.block.documentation.flowlang",
+                            "match": "@[a-zA-Z0-9-]+"
+                        }
+                    ]
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.flowlang",
+                    "match": "\\b(flow|team|chain|process|checkpoint|policy)\\b"
+                },
+                {
+                    "name": "keyword.operator.flowlang",
+                    "match": "\\b(if|else|for|while|return|break|continue)\\b"
+                },
+                {
+                    "name": "storage.type.flowlang",
+                    "match": "\\b(type|result)\\b"
+                },
+                {
+                    "name": "constant.language.flowlang",
+                    "match": "\\b(true|false|null|undefined)\\b"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.flowlang",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.flowlang",
+                    "match": "\\\\[\\'\\\"\\\\/bfnrt]|\\\\u[0-9a-fA-F]{4}"
+                }
+            ]
+        },
+        "numbers": {
+            "name": "constant.numeric.flowlang",
+            "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+        },
+        "operators": {
+            "name": "keyword.operator.flowlang",
+            "match": "[=!<>]=?|\\+\\+|--|&&|\\|\\||[+\\-*/%&|^~!?:.]"
+        },
+        "brackets": {
+            "patterns": [
+                {
+                    "name": "punctuation.bracket.curly.flowlang",
+                    "match": "[{}]"
+                },
+                {
+                    "name": "punctuation.bracket.square.flowlang",
+                    "match": "[\\[\\]]"
+                },
+                {
+                    "name": "punctuation.bracket.round.flowlang",
+                    "match": "[()]"
+                },
+                {
+                    "name": "punctuation.separator.comma.flowlang",
+                    "match": ","
+                },
+                {
+                    "name": "punctuation.terminator.semicolon.flowlang",
+                    "match": ";"
+                },
+                {
+                    "name": "punctuation.separator.colon.flowlang",
+                    "match": ":"
+                },
+                {
+                    "name": "punctuation.separator.dot.flowlang",
+                    "match": "\\."
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "flowlang-client",
+  "description": "VSCode part of FlowLang language server",
+  "author": "FlowLang Team",
+  "license": "MIT",
+  "version": "0.0.1",
+  "publisher": "flowlang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/flowlang"
+  },
+  "engines": {
+    "vscode": "^1.80.0",
+    "node": ">=16.0.0 <17.0.0 || >=18.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.0.1",
+    "vscode-languageserver-protocol": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^16.11.7",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^4.4.3"
+  },
+  "scripts": {
+    "update-vscode": "npm install @types/vscode@latest",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  }
+}

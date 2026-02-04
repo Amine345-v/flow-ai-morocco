@@ -1,0 +1,59 @@
+{
+    "comments": {
+        "lineComment": "//",
+        "blockComment": ["/*", "*/"]
+    },
+    "brackets": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"],
+        ["<", ">"]
+    ],
+    "autoClosingPairs": [
+        {"open": "{", "close": "}", "notIn": ["string"]},
+        {"open": "[", "close": "]", "notIn": ["string"]},
+        {"open": "(", "close": ")", "notIn": ["string"]},
+        {"open": "\"", "close": "\"", "notIn": ["string"]},
+        {"open": "'", "close": "'", "notIn": ["string"]},
+        {"open": "`", "close": "`", "notIn": ["string"]}
+    ],
+    "surroundingPairs": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"],
+        ["\"", "\""],
+        ["'", "'"],
+        ["`", "`"]
+    ],
+    "folding": {
+        "markers": {
+            "start": "^\\s*//\\s*#?region\\b",
+            "end": "^\\s*//\\s*#?endregion\\b"
+        }
+    },
+    "wordPattern": "(-?\\d*\\.\\d\\w*)|([^`~!@#$%^&*()\\-\\[\\]{};:'\",.<>/?\\s]+)",
+    "indentationRules": {
+        "increaseIndentPattern": "^\\s*((begin\\b|class\\b|def\\b|else\\b|elsif\\b|ensure\\b|for\\b|if\\b|module\\b|rescue\\b|unless\\b|until\\b|when\\b|while\\b|case\\b)|(.*\\sdo\\b)|(.*\\s(if|unless)\\s*[^\\n,;]+$)|(.*\\{[^}\\n\"]*$)|(.*\\([^)\\n\"]*$))",
+        "decreaseIndentPattern": "^\\s*([}\\]](,?\\s*(#|$))|(end\\b)|(when\\b)|(else\\b)|(rescue\\b)|(ensure\\b)|(\\)))"
+    },
+    "onEnterRules": [
+        {
+            "beforeText": "^\\s*((begin|case|class|def|do|else|elsif|ensure|for|if|module|rescue|unless|until|when|while|\\.\\.\\.)\\s*)$",
+            "action": {
+                "indent": "indent"
+            }
+        },
+        {
+            "beforeText": "^\\s*((begin|class|module|def|if|unless|case|while|until|for|do|rescue|ensure|else|elsif|when)\\b(?!.*?\\bend\\b.*).*)$",
+            "action": {
+                "indent": "indent"
+            }
+        },
+        {
+            "beforeText": "^\\s*(end|else|elsif|rescue|ensure|when|until|while)\\b",
+            "action": {
+                "indent": "outdent"
+            }
+        }
+    ]
+}
