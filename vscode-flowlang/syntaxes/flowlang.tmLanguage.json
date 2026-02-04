@@ -1,26 +1,27 @@
 {
-    "name": "FlowAiLang",
+    "name": "FlowLang",
     "scopeName": "source.flowlang",
     "fileTypes": ["flow"],
     "patterns": [
-        {
-            "include": "#comments"
-        },
-        {
-            "include": "#keywords"
-        },
-        {
-            "include": "#strings"
-        },
-        {
-            "include": "#numbers"
-        },
-        {
-            "include": "#operators"
-        },
-        {
-            "include": "#brackets"
-        }
+        { "include": "#comments" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#strings" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#brackets" },
+        { "include": "#parallel" },
+        { "include": "#race" },
+        { "include": "#roles" },
+        { "include": "#policies" },
+        { "include": "#function-calls" },
+        { "include": "#variables" },
+        { "include": "#properties" },
+        { "include": "#agents" },
+        { "include": "#team-names" },
+        { "include": "#parameter-lists" },
+        { "include": "#annotations" },
+        { "include": "#error-handling" }
     ],
     "repository": {
         "comments": {
@@ -46,19 +47,43 @@
             "patterns": [
                 {
                     "name": "keyword.control.flowlang",
-                    "match": "\\b(flow|team|chain|process|checkpoint|policy)\\b"
+                    "match": "\\b(flow|team|chain|process|checkpoint|policy|result|type|role|capabilities|rules)\\b"
                 },
                 {
                     "name": "keyword.operator.flowlang",
-                    "match": "\\b(if|else|for|while|return|break|continue)\\b"
+                    "match": "\\b(if|else|for|while|return|break|continue|in|as)\\b"
                 },
                 {
                     "name": "storage.type.flowlang",
-                    "match": "\\b(type|result)\\b"
+                    "match": "\\b(type|result|role|policy)\\b"
                 },
                 {
                     "name": "constant.language.flowlang",
-                    "match": "\\b(true|false|null|undefined)\\b"
+                    "match": "\\b(true|false|null|undefined|number|string|boolean|list|dict)\\b"
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "storage.type.builtin.flowlang",
+                    "match": "\\b(number|string|boolean|list|dict)\\b"
+                },
+                {
+                    "name": "entity.name.type.flowlang",
+                    "match": "\\b([A-Z][a-zA-Z0-9_]*)(?=\\s*\\(|\\s*;|\\s*$)"
+                },
+                {
+                    "name": "entity.name.type.result.flowlang",
+                    "match": "(?<=result\\s+)([A-Z][a-zA-Z0-9_]*)"
+                },
+                {
+                    "name": "entity.name.type.role.flowlang",
+                    "match": "(?<=role\\s+)([A-Z][a-zA-Z0-9_]*)"
+                },
+                {
+                    "name": "entity.name.type.policy.flowlang",
+                    "match": "(?<=policy\\s+)([A-Z][a-zA-Z0-9_]*)"
                 }
             ]
         },
@@ -75,7 +100,7 @@
         },
         "numbers": {
             "name": "constant.numeric.flowlang",
-            "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+            "match": "-?\\b[0-9]+(?:\\.[0-9]+)?\\b"
         },
         "operators": {
             "name": "keyword.operator.flowlang",
@@ -108,8 +133,92 @@
                     "match": ":"
                 },
                 {
-                    "name": "punctuation.separator.dot.flowlang",
+                    "name": "punctuation.accessor.flowlang",
                     "match": "\\."
+                }
+            ]
+        },
+        "function-calls": {
+            "patterns": [
+                {
+                    "name": "meta.function-call.flowlang",
+                    "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.flowlang"
+                        },
+                        "2": {
+                            "name": "punctuation.bracket.round.flowlang"
+                        }
+                    }
+                },
+                {
+                    "name": "support.function.builtin.flowlang",
+                    "match": "\\b(search|try|ask|judge)\\b(?=\\s*\\(|\\s*;|\\s*$)"
+                }
+            ]
+        },
+        "variables": {
+            "patterns": [
+                {
+                    "name": "variable.other.flowlang",
+                    "match": "\\b([a-z][a-zA-Z0-9_]*)(?=\\s*=|\\s*;|\\s*$)"
+                }
+            ]
+        },
+        "properties": {
+            "patterns": [
+                {
+                    "name": "variable.other.property.flowlang",
+                    "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*"
+                },
+                {
+                    "name": "support.class.flowlang",
+                    "match": "\\b(DevSearchers|DevExperimenters|DevMonologue|DevJudges)\\b"
+                }
+            ]
+        },
+        "agents": {
+            "patterns": [
+                {
+                    "name": "entity.name.agent.flowlang",
+                    "match": "(?<=agent\\s+)([A-Z][a-zA-Z0-9_]*)"
+                },
+                {
+                    "name": "keyword.declaration.agent.flowlang",
+                    "match": "\\b(agent|model|llm|gpt|gemini)\\b"
+                }
+            ]
+        },
+        "team-names": {
+            "patterns": [
+                {
+                    "name": "entity.name.team.flowlang",
+                    "match": "(?<=team\\s+)([A-Z][a-zA-Z0-9_]*)"
+                }
+            ]
+        },
+        "parameter-lists": {
+            "patterns": [
+                {
+                    "name": "variable.parameter.flowlang",
+                    "match": "(?<=\\()[a-zA-Z_][a-zA-Z0-9_]*(?=:)"
+                }
+            ]
+        },
+        "annotations": {
+            "patterns": [
+                {
+                    "name": "meta.annotation.flowlang",
+                    "match": "@[a-zA-Z_][a-zA-Z0-9_]*"
+                }
+            ]
+        },
+        "error-handling": {
+            "patterns": [
+                {
+                    "name": "keyword.error.flowlang",
+                    "match": "\\b(throw|error|fail|catch|assert)\\b"
                 }
             ]
         }

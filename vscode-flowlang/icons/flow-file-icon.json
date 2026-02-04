@@ -1,0 +1,14 @@
+{
+    "iconDefinitions": {
+        "_file_flow": {
+            "iconPath": "./flow-file-icon.svg"
+        }
+    },
+    "fileExtensions": {
+        "flow": "_file_flow"
+    },
+    "fileNames": {},
+    "languageIds": {
+        "flowlang": "_file_flow"
+    }
+}
