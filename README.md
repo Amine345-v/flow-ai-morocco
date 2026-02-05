@@ -1,136 +1,107 @@
-# FlowLang (مسير) – Prototype v0.1
+# FlowLang (المسير): Programming for Professions
 
-FlowLang هي لغة نطاق خاص (DSL) لتنسيق الأوامر المهنية ضمن "مسير" يحتوي على نقاط تفتيش Checkpoints، مع هياكل نظام: Teams، Chains، وProcess Trees.
+**FlowLang** is a state-of-the-art Domain Specific Language (DSL) designed to transform "LLM Magic" into "Professional Administration." Unlike traditional workflow engines, FlowLang treats AI agents as a specialized workforce, enforcing strict accountability, causal transparency, and hierarchical auditing.
 
-## الميزات الرئيسية
+---
 
-- **فرق**: مجموعات من الوكلاء مع أدوار وقدرات محددة
-- **سلاسل**: سلاسل سببية لنمذجة سير العمل والاعتماديات
-- **أشجار العملية**: نمذجة عملية هرمية
-- **تكامل الذكاء الاصطناعي**: دعم مدمج لمقدمي الذكاء الاصطناعي المتعددين (OpenAI، Anthropic، Gemini، إلخ)
-- **نقاط التفتيش**: إدارة الحالة وسيطرة سير العمل
+## 🏛 The Conceptual Framework: "Programming for Professions"
 
-## التثبيت
+FlowLang is built on the principle that AI orchestration should mirror professional administrative structures. It introduces three core archetypes:
 
-```bash
-pip install -r requirements.txt
-```
+### 1. The Conductor (المسير) — The Flow State
+In FlowLang, a `flow` is not just a function; it is a **Conductor**. 
+- **Maximal Granularity**: We use high-frequency checkpoints to prevent AI hallucination. Each checkpoint forces an "Unload/Load" cycle.
+- **Unload/Load Cycle**: At each stage, the context is "unloaded" into a report, pruning irrelevant data, and then "loaded" as a fresh **Order** for the next stage. This keeps the AI focused and context clean.
+- **Sequential Handover**: Reports are distributed across team members in turn, ensuring a fair and auditable distribution of professional responsibility.
 
-## البدء السريع
+### 2. The Order (التكليف) — The Atomic Unit of Work
+A variable in FlowLang is not just data; it is an **Order**.
+- **Lifecycle tracking**: Every Order has a state (`created`, `processing`, `completed`, `failed`).
+- **Audit Trail**: Every Order carries its own history—who touched it, what was the verb used, and what was the timestamp.
+- **Strict Typology**: Teams are specialized (e.g., `Command<Search>`, `Command<Judge>`). A "Search" team cannot "Judge," enforcing professional boundaries.
 
-```bash
-python scripts/run.py examples/hospital.flow
-```
+### 3. The Maestro (The Process Tree) — Hierarchical Mapping
+The `process` structure acts as the **Maestro**, mapping the "family tree" of the product.
+- **Binary Path Encoding**: Every node in the process tree has a unique bit-string address (e.g., `0101`). This allows the system to perform "Shortcut Searches" and instant tracing.
+- **Work Mapping**: Accomplishments from **Orders** are automatically mapped back to nodes in the Process Tree, visualizing what has been built and what is missing.
 
-## مكونات اللغة
+---
 
-### 1. فرق
-تمثل الفرق مجموعات من الوكلاء مع قدرات أوامر محددة.
+## 🛠 Language Components
 
+### Specialized Teams
+Define a workforce with specific capacities and models.
 ```flowlang
-team DiagnosisTeam: Command<Judge> [size=2];
-team ResourceTeam: Command<Search> [size=1];
+team Quality_Assurance : Command<Judge> [size=3, model="gpt-4o"];
+team Content_Creators : Command<Try>   [size=5, distribution=round_robin];
 ```
 
-### 2. سلاسل
-نمذجة العلاقات السببية وسير العمل بين العقد.
-
+### System Sequences (Data Chains)
+Create a "Guiding Thread" for causal links that persist even when context is pruned.
 ```flowlang
-chain PatientFlowChain {
-  nodes: [Reception, Examination, Treatment];
-  propagation: causal(decay=0.7, backprop=true, forward=true);
-  labels: { critical: "true" };
-  constraints: { min_beds: 1; require_protocol: true; };
+chain build_pipeline {
+    nodes: [Research, Design, Implementation, QA];
+    propagation: causal(decay=1.0, forward=true);
 }
 ```
 
-### 3. أشجار العملية
-نمذجة عملية هرمية مع الفروع والعقد.
-
+### The Maestro (Process Trees)
+Define the hierarchical roadmap of your product or system.
 ```flowlang
-process HospitalTree "Hospital System" {
-  root: "QualityCare";
-  branch "Emergency" -> ["ER", "ICU"];
-  branch "Archive" -> ["PaperRecords"];
+process software_map "Product Roadmap" {
+    root: "App";
+    branch "App" -> ["Auth", "Database", "UI"];
+    node "Auth" { priority: "high"; status: "pending"; };
 }
 ```
 
-### 4. النتائج والأنواع
-تحديد أنواع نتائج بنية للأوامر.
-
+### Flows & Checkpoints
+Orchestrate work through granular stages.
 ```flowlang
-result JudgeResult {
-  match: boolean;
-  protocol: string;
-  latency: number;
-  notes: string;
-};
-
-result SearchResult {
-  beds: number;
-  doctors: list;
-  drugs: list;
-};
-```
-
-### 5. سيطرة سير العمل
-تحديد سير العمل القابل للتنفيذ مع نقاط التفتيش.
-
-```flowlang
-flow PatientAdmission(using: [TriageTeam, ResourceTeam]) {
-  checkpoint "InitialAssessment" {
-    // عبارات محلية
-    result = TriageTeam.judge("Assess patient condition");
-    if (result.match) {
-      flow.back_to("AdmitPatient");
+flow production_pipeline(using: my_team) {
+    checkpoint "discovery" (report: market_data) {
+        market_data = my_team.search("Identify gaps");
     }
-  }
+    
+    checkpoint "design" (report: architecture) {
+        # 'market_data' is LOADED here as a fresh Order
+        architecture = my_team.try(market_data);
+    }
 }
 ```
 
-## تكامل الذكاء الاصطناعي
+---
 
-تدعم FlowLang مقدمي الذكاء الاصطناعي المتعددين من خلال واجهة موحدة:
+## ⚡️ Production Features
 
-```bash
-# متغيرات البيئة لمقدمي الذكاء الاصطناعي
-export OPENAI_API_KEY=your_key_here  # ل OpenAI
-export ANTHROPIC_API_KEY=your_key_here  # ل Anthropic
-# إلخ.
-```
+- **AI Resilience**: Automatic retry logic with "Corrective Prompts." If an AI fails schema validation, FlowLang feeds the error back to the model for self-correction.
+- **Persistence**: Full state serialization. Flows can be paused, snapshotted to disk, and resumed (`runtime.resume(path)`) after a crash or for human approval.
+- **Human-in-the-loop**: Use `confirm("prompt")` to create human gates for high-stakes decisions.
+- **Dry Run Mode**: Test complex multi-stage logic without calling actual AI APIs or performing side effects.
 
-### مقدمو الدعم
-- OpenAI (نماذج GPT)
-- Anthropic (Claude)
-- Google Gemini
-- Mistral AI
-- Cohere
-- Azure OpenAI
-- OpenRouter
-- Ollama
+---
 
-## هيكل النظام
+## 🚀 Getting Started
 
-- `flowlang/grammar.lark`: تعريف قواعد اللغة
-- `flowlang/ast.py`: عقد شجرة النحو المجردة
-- `flowlang/types.py`: نظام الأنواع
-- `flowlang/parser.py`: تحليل اللغة وتحويل شجرة النحو المجردة
-- `flowlang/semantic.py`: تحليل دلالي
-- `flowlang/runtime.py`: محرك التنفيذ
-- `flowlang/ai_providers.py`: تكاملات مقدمي الذكاء الاصطناعي
-- `flowlang/errors.py`: استثناءات مخصصة
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## الأمثلة
+2. **Run an Example**:
+   ```bash
+   python run_software_factory.py
+   ```
 
-انظر إلى دليل `examples/` للحصول على أمثلة كاملة:
+3. **Check the Docs**:
+   For deep dives into the conductor logic, see [docs/conductor_logic.md](docs/conductor_logic.md).
 
-- `hospital.flow`: نظام إدارة المستشفى
-- `example1.flow`: بناء الجملة الأساسي والميزات
+---
 
-## الحصول على المساعدة
+## 📂 System Structure
 
-للمسائل أو المشكلات، يرجى [فتح قضية](https://github.com/your-repo/issues).
-
-## رخصة
-
-[حدد رخصتك هنا]
+- `runtime.py`: The heart of the Conductor.
+- `types.py`: Definitions for Orders and Professional Typology.
+- `ai_providers.py`: The bridge to LLMs with "Binary Path Awareness."
+- `semantic.py`: Ensures teams act within their professional bounds.
+- `grammar.lark`: The formal definition of the FlowLang syntax.
