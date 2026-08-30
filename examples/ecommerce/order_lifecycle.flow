@@ -1,87 +1,107 @@
-// E-Commerce Order Lifecycle: "The Software Factory of Orders"
+// ============================================================================
+// FlowLang — E-Commerce Global Order & Supply Chain Engine
+// ============================================================================
+// Real-world scenario: An enterprise global e-commerce platform processing
+// high-volume orders. Features multi-item inventory micro-checks, automated
+// fraud scoring, payment authorization, and multi-carrier shipping logistics.
+// ============================================================================
 
-// 1. The Maestro: Order Process Tree
-process order_tracker "Order Lifecycle" {
-    root: "Order";
-    branch "Order" -> ["Validation", "Financial", "Logistics"];
-    
-    node "Fraud-Check" { status: "pending"; };
-    node "Inventory-Reserve" { status: "pending"; };
-    node "Payment-Capture" { status: "pending"; };
-    node "Shipping-Label" { status: "pending"; };
+process order_tracker "Global Supply Chain Roadmap" {
+    root: "OrderLifecycle";
+    branch "OrderLifecycle" -> ["FraudScreening", "InventoryAllocation", "FinancialSettlement", "LogisticsDispatched"];
+    branch "InventoryAllocation" -> ["Warehouse_US_East", "Warehouse_US_West", "Warehouse_EU_Central"];
+    branch "LogisticsDispatched" -> ["LabelGeneration", "CustomsClearance", "CarrierHandover"];
+
+    node "FraudScreening" { status: "pending"; };
+    node "Warehouse_US_East" { status: "pending"; };
+    node "CustomsClearance" { status: "pending"; };
+
+    policy: {
+        risk: 0.05;
+        require_reason: true;
+    };
+    audit: enabled;
 }
 
-// 2. Teams (JS SDK Workers)
-team fraud_guard   : Command<Judge> [size=1, connector="node fraud_engine.js"];
-team inventory_sys : Command<Try>   [size=1, connector="node inventory_worker.js"];
-team bank_gateway  : Command<Try>   [size=1, connector="node payment_worker.js"];
-team logistics     : Command<Search>[size=1, connector="node logistics_worker.js"];
+chain supply_chain_pipeline {
+    nodes: [OrderReceived, FraudCheck, StockReservation, PaymentCapture, LabelPrinted, OutForDelivery];
+    propagation: causal(decay=0.9, forward=true, backprop=true);
+}
 
-// 3. The Flow: Orchestrating the Lifecycle
-flow manage_order_lifecycle(order_id: string, amount: number, user_risk_score: number) {
+team fraud_guard   : Command<Judge>  [size=2, distribution=round_robin];
+team inventory_sys : Command<Try>    [size=3, distribution=round_robin];
+team bank_gateway  : Command<Try>    [size=2, distribution=round_robin];
+team logistics_sys : Command<Search> [size=2, distribution=round_robin];
 
-    // --- Phase 1: Validation ---
-    
-    checkpoint "security_gate" (report: fraud_result) {
-        fraud_result = fraud_guard.judge({
-            "amount": amount,
-            "risk_score": user_risk_score
-        });
+flow manage_order_lifecycle(using: fraud_guard, inventory_sys, bank_gateway, logistics_sys) {
+    context retention: checkpoint;
+    merge_policy: deep_merge;
+
+    // ── Stage 1: Security & Fraud Gate ──────────────────────────────────────
+    checkpoint "security_gate" (report: fraud_verdict) {
+        order_params = {"order_id": "ORD-99482", "amount": 1250.00, "user_risk_score": 0.02, "ip_country": "US"};
         
-        if (fraud_result.pass) {
-             order_tracker.mark("Fraud-Check", "Passed");
+        fraud_verdict = fraud_guard.judge(order_params, "Evaluate fraud risk score < 0.05 and billing-shipping match");
+
+        supply_chain_pipeline.touch("OrderReceived", effect=1.0);
+        supply_chain_pipeline.touch("FraudCheck", effect=0.98);
+
+        if (fraud_verdict.pass) {
+            order_tracker.mark("FraudScreening", "in_progress", reason="Fraud check passed");
         } else {
-             order_tracker.mark("Fraud-Check", "Failed");
-             flow.end;
-        }
-    }
-
-    checkpoint "inventory_gate" (report: stock_status) {
-        stock_status = inventory_sys.try("reserve", {"order_id": order_id});
-        
-        if (stock_status.success) {
-            order_tracker.mark("Inventory-Reserve", "Reserved");
-        } else {
-            order_tracker.mark("Inventory-Reserve", "Out-Of-Stock");
-            flow.end; // Or trigger "Backorder" flow
-        }
-    }
-    
-    order_tracker.mark("Validation", "Complete");
-
-
-    // --- Phase 2: Financial ---
-
-    checkpoint "payment_processing" (report: txn_result) {
-        txn_result = bank_gateway.try("charge", {
-            "order_id": order_id, 
-            "amount": amount
-        });
-
-        if (txn_result.success) {
-            order_tracker.mark("Payment-Capture", "Paid");
-            order_tracker.mark("Financial", "Settled");
-        } else {
-            order_tracker.mark("Payment-Capture", "Declined");
-            // Reverse inventory?
-            // inventory_sys.try("release", {"order_id": order_id});
+            order_tracker.mark("FraudScreening", "failed", reason="High risk score");
             flow.end;
         }
+
+        context.update(order_params, fraud_verdict);
     }
 
+    // ── Stage 2: Multi-Item Micro-Inventory Check ───────────────────────────
+    checkpoint "inventory_gate" (report: inventory_manifest) {
+        order_cart = ["SKU_Laptop_Pro_16", "SKU_Wireless_Mouse", "SKU_USB_C_Hub", "SKU_Leather_Sleeve"];
 
-    // --- Phase 3: Logistics ---
+        // Micro-checkpoint: Reserve each SKU in parallel across warehouses
+        micro_checkpoint "reserve_skus" (using: inventory_sys, batch: order_cart, strategy: parallel, threshold: 1.0) {
+            reservation = inventory_sys.try(item);
+        }
 
-    checkpoint "fulfillment" (report: shipping_info) {
-        // Search for best carrier
-        shipping_info = logistics.search({
-            "destination": "NY", 
-            "weight": 2.5
-        });
+        micro_checkpoint "verify_stock" (using: fraud_guard, batch: order_cart, strategy: round_robin, threshold: 1.0) {
+            stock_ok = fraud_guard.judge(item, "Confirm warehouse shelf location and quantity lock");
+        }
+
+        inventory_manifest = inventory_sys.try("Finalize item reservation manifest and lock serial numbers");
+
+        order_tracker.mark("InventoryAllocation", "implemented", reason="All 4 SKUs reserved");
+        supply_chain_pipeline.touch("StockReservation", effect=1.0);
+
+        context.update(inventory_manifest);
+    }
+
+    // ── Stage 3: Financial Settlement ───────────────────────────────────────
+    checkpoint "payment_processing" (report: payment_receipt) {
+        payment_receipt = bank_gateway.try("Authorize and capture credit card charge of $1,250.00");
+
+        order_tracker.mark("FinancialSettlement", "implemented", reason="Payment captured");
+        supply_chain_pipeline.touch("PaymentCapture", effect=1.0);
+
+        context.update(payment_receipt);
+    }
+
+    // ── Stage 4: Logistics & Dispatch ──────────────────────────────────────
+    checkpoint "fulfillment" (report: shipping_manifest) {
+        par {
+            carrier_rates = logistics_sys.search("Compare FedEx, UPS, and DHL rates for 2-day express");
+            customs_data = logistics_sys.search("Verify harmonized tariff codes and export documentation");
+        }
+
+        shipping_manifest = inventory_sys.try("Generate shipping label and manifest");
+
+        order_tracker.mark("LogisticsDispatched", "deployed", reason="Dispatched via FedEx Express");
+        order_tracker.mark("OrderLifecycle", "deployed", reason="Order fulfilled");
         
-        order_tracker.mark("Shipping-Label", "Generated");
-        order_tracker.mark("Logistics", "Dispatched");
+        supply_chain_pipeline.touch("LabelPrinted", effect=1.0);
+        supply_chain_pipeline.touch("OutForDelivery", effect=1.0);
+
+        order_tracker.audit();
     }
-    
-    order_tracker.mark("Order", "Completed");
 }

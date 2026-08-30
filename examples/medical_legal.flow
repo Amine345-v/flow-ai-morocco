@@ -1,39 +1,54 @@
-// Medical-Legal Governance Flow
+// ============================================================================
+// FlowLang — Medical-Legal Governance & Clinical Authorization Engine
+// ============================================================================
+// Real-world scenario: Multi-layer clinical governance.
+// A diagnostic tool generates results, the medical board validates clinical
+// safety, and the legal council verifies regulatory compliance (HIPAA).
+// Uses micro-checkpoints for parallel compliance verification.
+// ============================================================================
 
-// 1. Policy for external execution (Shell Connector)
-policy diagnostic_policy {
-    vars: {
-        connector: {
-            "search": "python scripts/mock_diag.py"
-        }
-    }
-}
+// 1. Workforce Configuration
+team diag_tool     : Command<Search> [size=2, distribution=round_robin];
+team medical_board : Command<Judge>  [size=2, distribution=round_robin];
+team legal_council : Command<Judge>  [size=1];
+team clinical_ai   : Command<Communicate> [size=1];
 
-// 2. Workforce Configuration
-team diag_tool : Command<Search> [size=1, policy=diagnostic_policy];
-team medical_board : Command<Judge> [size=1];
-team legal_council : Command<Judge> [size=1];
+// 2. The Conductor: Multi-Layer Clinical Governance
+flow medical_legal_auth(using: medical_board, legal_council, diag_tool, clinical_ai) {
+    context retention: checkpoint;
+    merge_policy: deep_merge;
 
-// 3. The Conductor: Integrating Layers
-flow medical_legal_auth(using: medical_board, legal_council, diag_tool) {
-    
-    // Stage 1: External Tier
+    // Stage 1: Diagnostic Examination
     checkpoint "external_diagnosis" (report: raw_output) {
-        raw_output = diag_tool.search("General Health Check");
+        par {
+            blood_panel = diag_tool.search("Complete Blood Count and Metabolic Panel");
+            imaging = diag_tool.search("Chest X-Ray and Abdominal Ultrasound");
+        }
+        raw_output = clinical_ai.ask("Consolidate all diagnostic findings into preliminary report");
+        context.update(blood_panel, imaging, raw_output);
     }
 
-    // Stage 2: Medical Governance
+    // Stage 2: Medical Board Governance with Micro-Checks
     checkpoint "medical_verification" (report: validated_diag) {
-        validated_diag = medical_board.judge(raw_output, criteria="Clinical Safety");
+        clinical_criteria = ["Drug_Interaction_Safety", "Dosage_Protocol", "Allergy_Cross_Reference"];
+
+        micro_checkpoint "clinical_safety_review" (using: medical_board, batch: clinical_criteria, threshold: 1.0) {
+            safety_check = medical_board.judge(item, "Verify clinical safety per WHO treatment guidelines");
+        }
+
+        validated_diag = medical_board.judge(raw_output, "Approve treatment plan for clinical safety");
+        context.update(validated_diag);
     }
 
-    // Stage 3: Legal Governance
+    // Stage 3: Legal Governance (HIPAA Compliance)
     checkpoint "legal_clearance" (report: final_approval) {
-        final_approval = legal_council.judge(validated_diag, criteria="HIPAA Compliance");
-        
+        final_approval = legal_council.judge(validated_diag, "Verify HIPAA compliance and patient consent");
+
         if (final_approval.pass) {
+            clinical_ai.ask("Authorization granted. Generate patient discharge summary.");
             flow.end;
         } else {
+            clinical_ai.ask("Legal clearance denied. Escalating to medical board for revision.");
             flow.back_to("medical_verification");
         }
     }

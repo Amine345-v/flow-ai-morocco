@@ -1,47 +1,100 @@
-// bridge_engineering.flow
-// A high-complexity flow demonstrating the Certainty Loop (Yaqeen)
+// ============================================================================
+// FlowLang — Civil Infrastructure Engineering (Yaqeen / Certainty Loop)
+// ============================================================================
+// Real-world scenario: Suspension Bridge Engineering & Safety Audit.
+// Demonstrates high-granularity micro-checkpoints for structural load, wind tunnel
+// stability, seismic resonance, and legal approval before construction.
+// ============================================================================
 
-process bridge_project "Suspension Bridge Alpha" {
+process bridge_project "Suspension Bridge Infrastructure Roadmap" {
     root: "Infrastructure";
-    branch "Infrastructure" -> ["Site-Analysis", "Structural-Design", "Final-Audit"];
+    branch "Infrastructure" -> ["GeologySurvey", "StructuralDesign", "SafetyAudit", "ConstructionPhase"];
+    branch "StructuralDesign" -> ["Pylons", "SuspensionCables", "DeckStructure"];
+    branch "SafetyAudit" -> ["SeismicTest", "WindTunnelTest", "LoadCapacity"];
+
+    node "GeologySurvey" { status: "pending"; };
+    node "Pylons" { status: "pending"; };
+    node "SeismicTest" { status: "pending"; };
+
+    policy: {
+        risk: 0.05;
+        require_reason: true;
+    };
+    audit: enabled;
 }
 
 chain construction_line {
-    nodes: [Analysis, Design, Audit];
-    propagation: causal(decay=1.0, backprop=true);
+    nodes: [GeologicalAnalysis, StructuralDesign, RiskAudit, SafetyCertification, Groundbreaking];
+    propagation: causal(decay=0.95, backprop=true, forward=true);
 }
 
-team surveyor : Command<Search> [size=1, connector="node examples/bridge_researcher.js"];
-team architect : Command<Try>    [size=1, connector="node examples/bridge_engineer.js"];
-team evaluator : Command<Judge>  [size=1, connector="node examples/bridge_judge.js"];
+role CivilEngineer {
+    capabilities: [code_read, run_tests, audit];
+}
 
-flow build_bridge(using: surveyor, architect, evaluator) {
-    
+team geological_surveyor : Command<Search> [size=2, distribution=round_robin];
+team structural_architect : Command<Try>    [size=3, distribution=round_robin];
+team safety_evaluator    : Command<Judge>  [size=2, distribution=round_robin, role=CivilEngineer];
+team chief_communicator  : Command<Communicate> [size=1];
+
+flow build_bridge(using: geological_surveyor, structural_architect, safety_evaluator, chief_communicator) {
+    context retention: checkpoint;
+    merge_policy: deep_merge;
+
+    // ── Stage 1: Geological & Soil Analysis ────────────────────────────────
     checkpoint "geology_research" (report: geo_report) {
-         geo_report = surveyor.search("Site-A");
-         bridge_project.mark("Site-Analysis", "Survey-Complete");
-         construction_line.touch("Analysis", 1.0);
+        chief_communicator.ask("Commence geological research for Suspension Bridge site");
+
+        par {
+            bedrock_depth = geological_surveyor.search("Core sample drilling analysis for pylon bedrocks");
+            seismic_history = geological_surveyor.search("Historical fault line activity and earthquake logs");
+        }
+
+        geo_report = chief_communicator.ask("Consolidate soil mechanics and bedrock depth into geo report");
+
+        bridge_project.mark("GeologySurvey", "in_progress", reason="Survey complete");
+        construction_line.touch("GeologicalAnalysis", effect=1.0);
+
+        context.update(bedrock_depth, seismic_history, geo_report);
     }
 
-    checkpoint "structural_design" (report: d_spec) {
-         // Architect MUST follow the traces from geo_report
-         d_spec = architect.try("design_bridge", {"input": geo_report});
-         bridge_project.mark("Structural-Design", "Schematic-Ready");
-         construction_line.touch("Design", 1.0);
+    // ── Stage 2: Structural Engineering Design ─────────────────────────────
+    checkpoint "structural_design" (report: design_spec) {
+        design_spec = structural_architect.try("Generate 3D Finite Element Model for bridge deck and pylons");
+
+        bridge_project.mark("StructuralDesign", "in_progress", reason="Schematics ready");
+        construction_line.touch("StructuralDesign", effect=0.95);
+
+        context.update(design_spec);
     }
 
-    checkpoint "certainty_audit" (report: verdict) {
-         // Evaluator reaches Yaqeen by looking at traces
-         verdict = evaluator.judge(d_spec);
-         
-         if (verdict.pass) {
-             bridge_project.mark("Final-Audit", "Approved");
-             construction_line.touch("Audit", 1.0);
-             echo "Yaqeen (Certainty) Reached: Bridge Design Approved.";
-         } else {
-             bridge_project.mark("Final-Audit", "Drift-Detected");
-             echo "Drift Detected! Backtracking to research...";
-             flow.back_to("geology_research")
-         }
+    // ── Stage 3: High-Density Micro-Safety Audit ───────────────────────────
+    checkpoint "certainty_audit" (report: audit_verdict) {
+        stress_factors = ["Category_5_Hurricane_Wind", "Magnitude_8_Earthquake", "Overload_Traffic_10K_Vehicles", "Thermal_Expansion_50C"];
+
+        // Micro-checkpoint: Parallel simulation of extreme environmental loads
+        micro_checkpoint "environmental_simulations" (using: structural_architect, batch: stress_factors, strategy: parallel, threshold: 1.0) {
+            sim_res = structural_architect.try(item);
+        }
+
+        micro_checkpoint "safety_code_verification" (using: safety_evaluator, batch: stress_factors, strategy: round_robin, threshold: 1.0) {
+            eval_res = safety_evaluator.judge(item, "Verify safety margin > 2.5x under maximum stress");
+        }
+
+        audit_verdict = safety_evaluator.judge(design_spec, "Final Yaqeen (Certainty) Safety Pass");
+
+        if (audit_verdict.pass) {
+            bridge_project.mark("SafetyAudit", "deployed", reason="Yaqeen Reached: Bridge Design Approved");
+            construction_line.touch("RiskAudit", effect=1.0);
+            construction_line.touch("SafetyCertification", effect=1.0);
+            chief_communicator.ask("Yaqeen (Certainty) Reached: Bridge Design Approved.");
+        } else {
+            bridge_project.mark("SafetyAudit", "failed", reason="Drift Detected: Insufficient safety factor");
+            chief_communicator.ask("Drift Detected! Backtracking to geological research...");
+            flow.back_to("geology_research");
+        }
+
+        context.update(audit_verdict);
+        bridge_project.audit();
     }
 }

@@ -1,6 +1,8 @@
 IDENT.0: /[a-zA-Z_][a-zA-Z0-9_]*/
 STRING.2: /"([^"\\\r\n]|\\.)*"/
 NUMBER.2: SIGNED_NUMBER
+BOOL_TRUE.2: "true"
+BOOL_FALSE.2: "false"
 %import common.SIGNED_NUMBER
 
 %import common.WS
@@ -76,7 +78,7 @@ micro_opt: "using" ":" IDENT -> micro_using_opt
          | "strategy" ":" ("parallel"|"round_robin"|"chunked"|"adaptive") -> micro_strategy_opt
          | "threshold" ":" NUMBER -> micro_threshold_opt
 
-local_stmt: var_assign ";" | action_stmt ";" | micro_checkpoint | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | confirm_stmt ";"
+local_stmt: var_assign ";" | action_stmt ";" | micro_checkpoint | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | audit_stmt ";" | confirm_stmt ";"
 
 if_stmt: "if" "(" expr ")" block ("else" block)?
 while_stmt: "while" "(" expr ")" block
@@ -86,7 +88,7 @@ block: "{" local_stmt* "}"
 par_stmt: "par" block
 race_stmt: "race" block
 
-flow_control: "flow" "." ("back_to" "(" STRING ")" | "end")
+flow_control: "flow" "." ("back_to" "(" STRING ")" | "end") ";"?
 context_stmt: "context" "." ("update" "(" expr_list? ")" | "snapshot" "(" expr_list? ")" | "prune" "(" expr_list? ")")
 chain_touch_stmt: IDENT "." "touch" "(" STRING ("," "effect" "=" expr)? ")"
 deploy_stmt: "deploy" "(" "Model" "=" STRING "," "env" "=" STRING ")"
@@ -118,7 +120,7 @@ CMP_OP: "=="|"!="|"<"|">"|"<="|">="
 member_access: "." IDENT -> field | "(" (expr_list?) ")" -> call
 ?atom: NUMBER -> number | STRING -> string | boolean -> boolean | IDENT -> name | list_literal | dict_literal | "(" expr ")"
 
-boolean: "true"|"false"
+boolean: BOOL_TRUE | BOOL_FALSE
 expr_list: expr ("," expr)*
 list_literal: "[" expr_list? "]"
 dict_literal: "{" dict_kv_list? "}"

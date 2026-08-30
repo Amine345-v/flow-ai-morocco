@@ -170,6 +170,14 @@ class Runtime:
 
         ctx = EvalContext(variables=ctx_vars, checkpoints=checkpoints_names, merge_policy=merge_policy)
         self.log(f"[flow] Start '{name}' with checkpoints: {checkpoints_names}")
+        
+        # Execute top-level flow statements outside checkpoints (e.g. variable assignments, initial setup)
+        for child in flow.children:
+            if isinstance(child, Tree) and child.data == "flow_stmt":
+                sub_child = child.children[0]
+                if isinstance(sub_child, Tree) and sub_child.data != "checkpoint":
+                    self._exec_block([child], ctx)
+
         pc = 0
         
         # Shadow State Storage for this run
@@ -1924,12 +1932,20 @@ class Runtime:
                 s = node.children[0]
                 return s[1:-1]
             if dt == "boolean":
-                return True if str(node.children[0]) == "true" else False
+                if node.children:
+                    return str(node.children[0]) == "true"
+                # Fallback for inline boolean with empty children (legacy)
+                return False
             if dt == "name":
                 name = str(node.children[0])
                 return ctx.variables.get(name)
             if dt == "list_literal":
-                return [self._eval_expr(ch, ctx) for ch in node.find_data("expr")]
+                # expr_list is the only child; its children are the individual exprs
+                if node.children:
+                    el = node.children[0]
+                    if isinstance(el, Tree) and el.data == "expr_list":
+                        return [self._eval_expr(ch, ctx) for ch in el.children]
+                return []
             if dt == "dict_literal":
                 # construct from dict_kv
                 result: Dict[str, Any] = {}

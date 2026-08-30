@@ -11,6 +11,7 @@ class TestMicroCheckpoints(unittest.TestCase):
         if os.path.exists(self.state_dir):
             shutil.rmtree(self.state_dir)
         self.runtime.persistence.base_path = self.state_dir
+        os.makedirs(self.state_dir, exist_ok=True)
 
     def tearDown(self):
         if os.path.exists(self.state_dir):

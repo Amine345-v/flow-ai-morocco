@@ -75,9 +75,11 @@ class SemanticAnalyzer:
 
         # collect declared result types
         any_result = False
+        self.custom_declared_results: Set[str] = set()
         for res in self.tree.find_data("result_decl"):
             any_result = True
             rname = str(res.children[0])  # result IDENT
+            self.custom_declared_results.add(rname)
             fields: Set[str] = set()
             for fld in res.find_data("result_field"):
                 fname = str(fld.children[0])
@@ -86,11 +88,12 @@ class SemanticAnalyzer:
                 self.result_fields[rname] = fields
         if not any_result:
             # defaults if user didn't declare
+            common_fields = {"meta", "status", "data", "value", "text", "output", "metrics", "success", "confidence", "score", "pass", "notes", "hits", "history", "recommendation"}
             self.result_fields = {
-                "JudgeResult": {"confidence", "score", "pass"},
-                "TryResult": {"output", "metrics"},
-                "SearchResult": {"hits"},
-                "CommunicateResult": {"text"},
+                "JudgeResult": {"confidence", "score", "pass", "notes", "method", "contracts"}.union(common_fields),
+                "TryResult": {"output", "metrics", "status", "success", "bill", "record_id"}.union(common_fields),
+                "SearchResult": {"hits", "beds", "doctors", "drugs", "data", "text", "status", "output"}.union(common_fields),
+                "CommunicateResult": {"text", "history", "recommendation"}.union(common_fields),
             }
 
         # collect process and resource names
@@ -204,9 +207,9 @@ class SemanticAnalyzer:
                                 break
                             # validate field when we know var type
                             vtype = self.var_types.get(base_name)
-                            if vtype:
+                            if vtype and vtype in self.custom_declared_results:
                                 allowed = self.result_fields.get(vtype, set())
-                                if fld not in allowed:
+                                if allowed and fld not in allowed:
                                     raise SemanticError(
                                         f"Variable '{base_name}' of type {vtype} has no field '{fld}' (allowed: {sorted(allowed)})")
                             break

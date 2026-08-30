@@ -1,58 +1,189 @@
-# Software Factory: Building an App with Maximal Granularity
+// ============================================================================
+// FlowLang — Software Factory: Full SaaS Product from Zero to Production
+// ============================================================================
+// Real-world scenario: A startup is building a CRM SaaS.
+// The AI workforce researches the market, architects the system, implements it
+// module-by-module, then QA reviews every module with micro-checkpoints before
+// a human gate approves deployment.
+// ============================================================================
 
-# 1. The Maestro: Hierarchical Project Roadmap
-process software_project "Software Lifecycle" {
-    root: "App";
-    branch "App" -> ["Backend", "Frontend"];
-    branch "Backend" -> ["API", "Database"];
-    
-    node "Market-Research" { status: "pending"; };
-    node "API-Design" { status: "pending"; };
-    node "API-Implementation" { status: "pending"; };
+// ---------------------------------------------------------------------------
+// 1. The Maestro: Product Roadmap (Process Tree)
+// ---------------------------------------------------------------------------
+
+process product_map "CRM SaaS Roadmap" {
+    root: "CRM";
+    branch "CRM" -> ["Backend", "Frontend", "Infrastructure"];
+    branch "Backend" -> ["AuthService", "ContactsAPI", "PipelineEngine", "BillingModule"];
+    branch "Frontend" -> ["Dashboard", "ContactsUI", "PipelineBoard", "SettingsPage"];
+    branch "Infrastructure" -> ["CI_CD", "Monitoring", "DatabaseMigrations"];
+
+    node "AuthService" { priority: "critical"; status: "pending"; };
+    node "ContactsAPI" { priority: "high"; status: "pending"; };
+    node "PipelineEngine" { priority: "high"; status: "pending"; };
+    node "BillingModule" { priority: "medium"; status: "pending"; };
+    node "Dashboard" { priority: "high"; status: "pending"; };
+    node "CI_CD" { priority: "critical"; status: "pending"; };
+
+    policy: {
+        risk: 0.15;
+        require_reason: true;
+        allowed_status: "pending,in_progress,implemented,tested,deployed,failed";
+    };
+    audit: enabled;
 }
 
-# 2. System Sequence: The Guiding Thread
-chain build_sequence {
-    nodes: [Research, Design, Implementation, QA, Release];
-    propagation: causal(decay=1.0, forward=true);
+// ---------------------------------------------------------------------------
+// 2. System Sequences: Causal Chains
+// ---------------------------------------------------------------------------
+
+chain development_pipeline {
+    nodes: [Discovery, Architecture, Implementation, Testing, Staging, Production];
+    propagation: causal(decay=0.8, backprop=true, forward=true);
+    labels: { owner: "engineering", sprint: "Q3-2026" };
+    constraints: {
+        require_eval: true;
+    };
 }
 
-team researcher : Command<Search> [size=2];
-team architect  : Command<Try>    [size=1];
-team QA_Engine   : Command<Judge>  [size=3];
+// ---------------------------------------------------------------------------
+// 3. Professional Workforce (Strict Typology)
+// ---------------------------------------------------------------------------
 
-# Maximal Granularity flow
-flow software_factory(using: researcher, architect, QA_Engine) {
-    
-    # Checkpoint 1: Initial Discovery
-    checkpoint "market_discovery" (report: m_report) {
-         m_report = researcher.search("CRM market gaps");
-         software_project.mark("Market-Research", "In-Progress");
+role SeniorEngineer {
+    capabilities: [code_read, code_write, run_tests, deploy];
+}
+
+policy QualityFirst {
+    rules: ["no_plain_secrets", "enforce_code_scan", "Strict"];
+}
+
+team market_researchers  : Command<Search>      [size=3, distribution=round_robin];
+team system_architects   : Command<Try>         [size=2, distribution=round_robin];
+team code_engineers      : Command<Try>         [size=5, distribution=round_robin];
+team qa_reviewers        : Command<Judge>       [size=4, distribution=round_robin, role=SeniorEngineer, policy=QualityFirst];
+team product_thinker     : Command<Communicate> [size=1];
+
+// ---------------------------------------------------------------------------
+// 4. The Conductor: Full Product Build Flow
+// ---------------------------------------------------------------------------
+
+flow build_crm_saas(using: market_researchers, system_architects, code_engineers, qa_reviewers, product_thinker) {
+    context retention: checkpoint;
+    merge_policy: deep_merge;
+
+    // ── Stage 1: Market Discovery ──────────────────────────────────────────
+    checkpoint "market_discovery" (report: market_intel) {
+        // Self-reflection before acting
+        reflection = product_thinker.ask("What does a modern CRM need to beat Salesforce for SMBs?");
+
+        // Parallel market research across the team
+        par {
+            competitors = market_researchers.search("Top 20 CRM platforms feature comparison 2026");
+            pain_points = market_researchers.search("SMB CRM pain points Reddit HackerNews reviews");
+            pricing = market_researchers.search("CRM pricing models and conversion benchmarks");
+        }
+
+        market_intel = product_thinker.ask("Synthesize competitor data, pain points, and pricing into a product brief");
+
+        context.update(reflection, competitors, pain_points, pricing, market_intel);
+        development_pipeline.touch("Discovery", effect=1.0);
+        product_map.mark("CRM", "in_progress", reason="Market discovery complete");
     }
 
-    # Checkpoint 2: Technical Discovery
-    checkpoint "tech_discovery" (report: t_report) {
-         # The conductor 'loads' m_report into the next stage
-         t_report = researcher.search(m_report);
-         software_project.mark("Market-Research", "Done");
+    // ── Stage 2: System Architecture ───────────────────────────────────────
+    checkpoint "architecture" (report: system_design) {
+        // Architect proposes high-level design based on market intel
+        system_design = system_architects.try(market_intel);
+
+        // Micro-checks: validate each architectural decision
+        arch_areas = ["AuthService", "ContactsAPI", "PipelineEngine", "BillingModule", "Dashboard"];
+
+        micro_checkpoint "arch_review" (using: qa_reviewers, batch: arch_areas, strategy: round_robin, threshold: 0.8) {
+            review_result = qa_reviewers.judge(item, "Does this component design handle 10K concurrent users?");
+        }
+
+        context.update(system_design);
+        development_pipeline.touch("Architecture", effect=0.95);
+        product_map.mark("Backend", "in_progress", reason="Architecture approved");
+        product_map.mark("Frontend", "in_progress", reason="Architecture approved");
     }
 
-    # Checkpoint 3: Architecture Design
-    checkpoint "design_phase" (report: d_report) {
-         # High granularity prevents hallucination by distilling state here
-         d_report = architect.try(t_report);
-         software_project.mark("API-Design", "Completed");
+    // ── Stage 3: Implementation Sprint ─────────────────────────────────────
+    checkpoint "implementation" (report: codebase) {
+        // Backend modules — each built by the engineering team
+        auth_code = code_engineers.try("Implement JWT auth service with OAuth2 + RBAC");
+        product_map.mark("AuthService", "implemented", reason="Auth service built");
+
+        contacts_code = code_engineers.try("Build contacts CRUD API with search, tags, and import/export");
+        product_map.mark("ContactsAPI", "implemented", reason="Contacts API built");
+
+        pipeline_code = code_engineers.try("Create sales pipeline engine with drag-drop stages and automation rules");
+        product_map.mark("PipelineEngine", "implemented", reason="Pipeline engine built");
+
+        billing_code = code_engineers.try("Integrate Stripe billing with subscription tiers and usage metering");
+        product_map.mark("BillingModule", "implemented", reason="Billing module built");
+
+        // Frontend
+        dashboard_code = code_engineers.try("Build React dashboard with charts, activity feed, and KPI widgets");
+        product_map.mark("Dashboard", "implemented", reason="Dashboard built");
+
+        codebase = product_thinker.ask("Summarize all implemented modules into a deployment manifest");
+
+        context.update(auth_code, contacts_code, pipeline_code, billing_code, dashboard_code, codebase);
+        development_pipeline.touch("Implementation", effect=0.9);
     }
 
-    # Checkpoint 4: Initial Implementation
-    checkpoint "impl_phase_1" (report: i1_report) {
-         i1_report = architect.try(d_report);
-         software_project.mark("API-Implementation", "Started");
+    // ── Stage 4: Quality Assurance (Micro-Checkpoints at Scale) ────────────
+    checkpoint "quality_gate" (report: qa_verdict) {
+        // Every module gets independently reviewed by the QA team
+        modules_to_test = ["AuthService", "ContactsAPI", "PipelineEngine", "BillingModule", "Dashboard", "CI_CD"];
+
+        micro_checkpoint "unit_tests" (using: qa_reviewers, batch: modules_to_test, strategy: round_robin, threshold: 0.9) {
+            test_result = qa_reviewers.judge(item, "Run unit tests. Coverage > 80%? All edge cases handled?");
+        }
+
+        micro_checkpoint "security_scan" (using: qa_reviewers, batch: modules_to_test, strategy: parallel, threshold: 1.0) {
+            sec_result = qa_reviewers.judge(item, "OWASP Top 10 scan. Any SQL injection, XSS, or auth bypass?");
+        }
+
+        micro_checkpoint "performance_test" (using: qa_reviewers, batch: modules_to_test, threshold: 0.8) {
+            perf_result = qa_reviewers.judge(item, "Load test at 5K req/s. P99 latency < 200ms?");
+        }
+
+        qa_verdict = product_thinker.ask("Compile QA results into a release readiness report");
+
+        context.update(qa_verdict);
+        development_pipeline.touch("Testing", effect=0.95);
     }
 
-    # Checkpoint 5: Review
-    checkpoint "review_phase" (report: approval) {
-         approval = QA_Engine.judge(i1_report);
-         software_project.mark("API-Implementation", "Validated");
+    // ── Stage 5: Human Approval Gate ───────────────────────────────────────
+    checkpoint "release_approval" (report: approved) {
+        confirm("CTO Review: All 6 modules passed QA. Deploy to staging?", timeout=3600) -> cto_approved;
+
+        if (cto_approved) {
+            staging_result = code_engineers.try("Deploy all services to staging environment");
+            development_pipeline.touch("Staging", effect=1.0);
+            product_map.mark("CI_CD", "deployed", reason="Staging deployment succeeded");
+            product_map.mark("Infrastructure", "in_progress", reason="Staging live");
+        } else {
+            flow.back_to("quality_gate");
+        }
+
+        approved = cto_approved;
+    }
+
+    // ── Stage 6: Production Release ────────────────────────────────────────
+    checkpoint "production_release" (report: live_status) {
+        // Final smoke test on staging
+        micro_check "smoke_tests" (using: qa_reviewers, batch: modules_to_test, threshold: 1.0) {
+            smoke = qa_reviewers.judge(item, "Smoke test on staging. Core user journey works?");
+        }
+
+        live_status = code_engineers.try("Blue-green deploy to production with rollback plan");
+        development_pipeline.touch("Production", effect=1.0);
+        product_map.mark("CRM", "deployed", reason="v1.0 live in production");
+
+        product_map.audit();
     }
 }
