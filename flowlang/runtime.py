@@ -441,21 +441,42 @@ class Runtime:
 
             self.log(f"[micro_checkpoint.partition] Distributed {num_checks} micro-checks across {team_size} worker slots")
 
-            for worker_id, items_for_worker in partitions.items():
-                for idx, item in items_for_worker:
-                    sub_ctx = self._ctx_clone(ctx)
-                    sub_ctx.variables["item"] = item
-                    sub_ctx.variables["micro_index"] = idx
-                    sub_ctx.variables["worker_id"] = worker_id
+            def run_single_check(worker_id: int, idx: int, item: Any):
+                sub_ctx = self._ctx_clone(ctx)
+                sub_ctx.variables["item"] = item
+                sub_ctx.variables["micro_index"] = idx
+                sub_ctx.variables["worker_id"] = worker_id
 
-                    try:
-                        self._exec_block(local_stmts, sub_ctx)
+                try:
+                    self._exec_block(local_stmts, sub_ctx)
+                    return True, sub_ctx, {"index": idx, "status": "passed", "worker": worker_id}
+                except Exception as err:
+                    self.log(f"[micro_checkpoint.check_fail] Check #{idx} failed on worker {worker_id}: {err}")
+                    return False, sub_ctx, {"index": idx, "status": "failed", "error": str(err), "worker": worker_id}
+
+            if strategy == "parallel" and len(batch_items) > 1:
+                from concurrent.futures import ThreadPoolExecutor
+                max_workers = min(team_size, len(batch_items))
+                self.log(f"[micro_checkpoint.parallel] Executing {num_checks} checks concurrently across {max_workers} worker threads")
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = []
+                    for worker_id, items_for_worker in partitions.items():
+                        for idx, item in items_for_worker:
+                            futures.append(executor.submit(run_single_check, worker_id, idx, item))
+                    for fut in futures:
+                        success, sub_ctx, res = fut.result()
+                        if success:
+                            passed_count += 1
                         self._merge_contexts(ctx, sub_ctx)
-                        passed_count += 1
-                        micro_results.append({"index": idx, "status": "passed", "worker": worker_id})
-                    except Exception as err:
-                        self.log(f"[micro_checkpoint.check_fail] Check #{idx} failed on worker {worker_id}: {err}")
-                        micro_results.append({"index": idx, "status": "failed", "error": str(err), "worker": worker_id})
+                        micro_results.append(res)
+            else:
+                for worker_id, items_for_worker in partitions.items():
+                    for idx, item in items_for_worker:
+                        success, sub_ctx, res = run_single_check(worker_id, idx, item)
+                        if success:
+                            passed_count += 1
+                        self._merge_contexts(ctx, sub_ctx)
+                        micro_results.append(res)
         else:
             try:
                 self._exec_block(local_stmts, ctx)

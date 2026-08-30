@@ -225,35 +225,58 @@ documents.listen(connection);
 // This handler provides the initial list of completion items.
 connection.onCompletion(() => {
     return [
-        {
-            label: 'flow',
-            kind: 1, // Text
-            data: 1
-        },
-        {
-            label: 'chain',
-            kind: 1,
-            data: 2
-        },
-        {
-            label: 'process',
-            kind: 1,
-            data: 3
-        }
+        { label: 'flow', kind: 14, data: 1 },
+        { label: 'checkpoint', kind: 14, data: 2 },
+        { label: 'micro_checkpoint', kind: 14, data: 3 },
+        { label: 'micro_check', kind: 14, data: 4 },
+        { label: 'team', kind: 14, data: 5 },
+        { label: 'chain', kind: 14, data: 6 },
+        { label: 'process', kind: 14, data: 7 },
+        { label: 'role', kind: 14, data: 8 },
+        { label: 'policy', kind: 14, data: 9 },
+        { label: 'resource', kind: 14, data: 10 },
+        { label: 'result', kind: 14, data: 11 },
+        { label: 'Command<Search>', kind: 15, data: 12 },
+        { label: 'Command<Try>', kind: 15, data: 13 },
+        { label: 'Command<Judge>', kind: 15, data: 14 },
+        { label: 'Command<Communicate>', kind: 15, data: 15 },
+        { label: 'context.update', kind: 3, data: 16 },
+        { label: 'flow.back_to', kind: 3, data: 17 },
+        { label: 'flow.end', kind: 3, data: 18 },
+        { label: 'par', kind: 14, data: 19 },
+        { label: 'race', kind: 14, data: 20 },
     ];
 });
 
 // This handler resolves additional information for the item selected in the completion list.
 connection.onCompletionResolve((item) => {
-    if (item.data === 1) {
-        item.detail = 'FlowLang flow';
-        item.documentation = 'Define a new flow in FlowLang';
-    } else if (item.data === 2) {
-        item.detail = 'FlowLang chain';
-        item.documentation = 'Define a chain of processes in FlowLang';
-    } else if (item.data === 3) {
-        item.detail = 'FlowLang process';
-        item.documentation = 'Define a process in FlowLang';
+    const docs: Record<number, { detail: string; documentation: string }> = {
+        1: { detail: 'FlowLang flow', documentation: 'Define an execution flow (The Conductor).' },
+        2: { detail: 'FlowLang checkpoint', documentation: 'Execution stage that dumps working memory to prevent AI hallucination.' },
+        3: { detail: 'FlowLang micro_checkpoint', documentation: 'High-density batch task delegation across worker teams with threshold gating.' },
+        4: { detail: 'FlowLang micro_check', documentation: 'Alias for micro_checkpoint.' },
+        5: { detail: 'FlowLang team', documentation: 'Homogeneous pool of worker agents executing typed commands.' },
+        6: { detail: 'FlowLang chain', documentation: 'Causal dependency graph with decay propagation.' },
+        7: { detail: 'FlowLang process', documentation: 'Hierarchical roadmap and audit tree.' },
+        8: { detail: 'FlowLang role', documentation: 'Define capabilities and security access controls.' },
+        9: { detail: 'FlowLang policy', documentation: 'Governance constraints enforced at runtime.' },
+        10: { detail: 'FlowLang resource', documentation: 'External codebase, dataset, or tool declaration.' },
+        11: { detail: 'FlowLang result', documentation: 'Structured result schema declaration.' },
+        12: { detail: 'Command<Search>', documentation: 'Search verb command type for information retrieval.' },
+        13: { detail: 'Command<Try>', documentation: 'Try verb command type for experimentation and code building.' },
+        14: { detail: 'Command<Judge>', documentation: 'Judge verb command type for evaluation and quality gating.' },
+        15: { detail: 'Command<Communicate>', documentation: 'Communicate verb command type for monologue and reflection.' },
+        16: { detail: 'context.update(...)', documentation: 'Persist variables to flow memory.' },
+        17: { detail: 'flow.back_to("stage")', documentation: 'Jump back to a previous checkpoint stage.' },
+        18: { detail: 'flow.end', documentation: 'Terminate flow execution.' },
+        19: { detail: 'par { ... }', documentation: 'Execute statements concurrently.' },
+        20: { detail: 'race { ... }', documentation: 'Execute statements in competition; first result wins.' },
+    };
+
+    const doc = docs[item.data as number];
+    if (doc) {
+        item.detail = doc.detail;
+        item.documentation = doc.documentation;
     }
     return item;
 });

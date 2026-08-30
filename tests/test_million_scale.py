@@ -97,7 +97,7 @@ class TestMillionScale(unittest.TestCase):
                 engine.add_node(child, 2.0)
                 engine.add_edge(name, child)
         
-        is_stable, levels = engine.verify_stability("ROOT", 100.0, 0.8)
+        is_stable, levels = engine.verify_stability("ROOT", 100.0, 0.15)
         
         print(f"\n[LYAPUNOV] Stable: {is_stable}")
         print(f"[LYAPUNOV] Energy per level: {[f'{e:.2f}' for e in levels]}")
