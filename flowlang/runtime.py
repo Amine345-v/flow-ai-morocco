@@ -68,7 +68,7 @@ class Runtime:
         self.teams: Dict[str, Dict[str, Any]] = {}
         self.tools: Dict[str, Dict[str, Any]] = {}
         self.roles: Dict[str, Dict[str, Any]] = {}
-        self.metrics: Dict[str, Any] = {"actions": 0, "checkpoints": 0, "back_to": 0, "verbs": {}, "checkpoint_ms": {}}
+        self.metrics: Dict[str, Any] = {"actions": 0, "checkpoints": 0, "micro_checkpoints": 0, "micro_checks": 0, "back_to": 0, "verbs": {}, "checkpoint_ms": {}}
         self.tracer = _otel_tracer
         # AI execution wiring: enabled when OpenAI client available and API key set
         self.ai_client = _OpenAIClient() if (_OpenAIClient and os.getenv("OPENAI_API_KEY")) else None
@@ -344,10 +344,138 @@ class Runtime:
                         self._exec_system_call(child, ctx)
                     case "confirm_stmt":
                         self._exec_confirm_stmt(child, ctx)
+                    case "micro_checkpoint":
+                        self._exec_micro_checkpoint(child, ctx)
                     case _:
                         raise RuntimeFlowError(f"Unsupported statement: {child.data}")
             else:
                 raise RuntimeFlowError("Malformed local statement")
+
+    def _exec_micro_checkpoint(self, node: Tree, ctx: EvalContext):
+        # Extract micro checkpoint name
+        micro_name = str(node.children[0].value).strip('"')
+
+        assigned_team = None
+        batch_expr_node = None
+        strategy = "round_robin"
+        threshold = None
+
+        # Parse micro_opts and local statements
+        local_stmts = []
+        for child in node.children[1:]:
+            if isinstance(child, Tree) and child.data == "micro_opts":
+                for opt in child.children:
+                    if isinstance(opt, Tree):
+                        if opt.data == "micro_using_opt" and opt.children:
+                            assigned_team = str(opt.children[0])
+                        elif opt.data in ("micro_batch_opt", "micro_items_opt") and opt.children:
+                            batch_expr_node = opt.children[0]
+                        elif opt.data == "micro_strategy_opt" and opt.children:
+                            strategy = str(opt.children[0])
+                        elif opt.data == "micro_threshold_opt" and opt.children:
+                            threshold = float(opt.children[0])
+            elif isinstance(child, Tree) and child.data == "local_stmt":
+                local_stmts.append(child)
+
+        # Default fallback team
+        if not assigned_team and self.teams:
+            assigned_team = next(iter(self.teams.keys()))
+
+        # Evaluate batch items if expression node present
+        batch_items = []
+        if batch_expr_node:
+            evaluated_batch = self._eval_expr(batch_expr_node, ctx)
+            if isinstance(evaluated_batch, list):
+                batch_items = evaluated_batch
+            elif evaluated_batch is not None:
+                batch_items = [evaluated_batch]
+
+        num_checks = len(batch_items) if batch_items else 1
+
+        # Register DAG sub-nodes in SystemTreeEngine
+        if self.system_tree:
+            cp_id = ctx.current_stage or "flow_root"
+            if batch_items:
+                self.system_tree.add_micro_checkpoint_batch(
+                    checkpoint_id=cp_id,
+                    micro_prefix=f"{cp_id}/{micro_name}",
+                    count=num_checks,
+                    team_name=assigned_team
+                )
+            else:
+                self.system_tree.add_micro_checkpoint(
+                    checkpoint_id=cp_id,
+                    micro_id=f"{cp_id}/{micro_name}",
+                    team_name=assigned_team
+                )
+
+        # Team workload balancing & worker partitioning
+        team_info = self.teams.get(assigned_team, {}) if assigned_team else {}
+        team_size = team_info.get("size", 1)
+        distribution_policy = team_info.get("distribution", "round_robin")
+
+        self.log(
+            f"[micro_checkpoint] '{micro_name}' starting {num_checks} micro-checks "
+            f"powered by team '{assigned_team}' (size={team_size}, distribution={distribution_policy}, strategy={strategy})"
+        )
+
+        self.metrics["micro_checkpoints"] = self.metrics.get("micro_checkpoints", 0) + 1
+        self.metrics["micro_checks"] = self.metrics.get("micro_checks", 0) + num_checks
+
+        passed_count = 0
+        micro_results = []
+
+        if batch_items:
+            partitions: Dict[int, List[Tuple[int, Any]]] = {w: [] for w in range(team_size)}
+            for idx, item in enumerate(batch_items):
+                worker_id = idx % team_size
+                partitions[worker_id].append((idx, item))
+
+            self.log(f"[micro_checkpoint.partition] Distributed {num_checks} micro-checks across {team_size} worker slots")
+
+            for worker_id, items_for_worker in partitions.items():
+                for idx, item in items_for_worker:
+                    sub_ctx = self._ctx_clone(ctx)
+                    sub_ctx.variables["item"] = item
+                    sub_ctx.variables["micro_index"] = idx
+                    sub_ctx.variables["worker_id"] = worker_id
+
+                    try:
+                        self._exec_block(local_stmts, sub_ctx)
+                        self._merge_contexts(ctx, sub_ctx)
+                        passed_count += 1
+                        micro_results.append({"index": idx, "status": "passed", "worker": worker_id})
+                    except Exception as err:
+                        self.log(f"[micro_checkpoint.check_fail] Check #{idx} failed on worker {worker_id}: {err}")
+                        micro_results.append({"index": idx, "status": "failed", "error": str(err), "worker": worker_id})
+        else:
+            try:
+                self._exec_block(local_stmts, ctx)
+                passed_count += 1
+                micro_results.append({"index": 0, "status": "passed"})
+            except Exception as err:
+                self.log(f"[micro_checkpoint.check_fail] Micro-check '{micro_name}' failed: {err}")
+                micro_results.append({"index": 0, "status": "failed", "error": str(err)})
+
+        # Update micro reports dictionary in EvalContext
+        if "__micro_reports__" not in ctx.variables:
+            ctx.variables["__micro_reports__"] = {}
+        ctx.variables["__micro_reports__"][micro_name] = {
+            "total": num_checks,
+            "passed": passed_count,
+            "failed": num_checks - passed_count,
+            "team": assigned_team,
+            "results": micro_results
+        }
+
+        if threshold is not None:
+            pass_rate = passed_count / num_checks if num_checks > 0 else 1.0
+            if pass_rate < threshold:
+                raise RuntimeFlowError(
+                    f"Micro-checkpoint '{micro_name}' failed threshold: {pass_rate:.2%} < required {threshold:.2%}"
+                )
+
+        self.log(f"[micro_checkpoint.done] '{micro_name}' finished: {passed_count}/{num_checks} micro-checks passed")
 
     def _exec_if(self, node: Tree, ctx: EvalContext):
         cond = self._eval_expr(node.children[0], ctx)

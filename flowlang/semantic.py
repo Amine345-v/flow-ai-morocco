@@ -146,6 +146,14 @@ class SemanticAnalyzer:
                 if t not in self.teams:
                     raise SemanticError(f"Flow '{flow_name}' references unknown team '{t}'")
 
+            # Validate micro_checkpoint team references
+            for mcp in flow_node.find_data("micro_checkpoint"):
+                for opt in mcp.find_data("micro_using_opt"):
+                    if opt.children:
+                        tname = str(opt.children[0])
+                        if tname not in self.teams:
+                            raise SemanticError(f"Micro-checkpoint in flow '{flow_name}' references unknown team '{tname}'")
+
             # Validate statements within flow
             # reset per-flow var types
             self.var_types = {}

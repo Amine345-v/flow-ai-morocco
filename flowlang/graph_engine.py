@@ -109,6 +109,43 @@ class SystemTreeEngine:
                 # We need to manually remove descendants from Rust too.
                 for d in descendants:
                     self.rust_engine.remove_node(d)
+
+    def add_micro_checkpoint(self, checkpoint_id: str, micro_id: str, team_name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> bool:
+        """Register a micro-checkpoint node under a parent checkpoint in the DAG."""
+        if micro_id in self.graph.nodes:
+            return True
+
+        node_data = {
+            "name": micro_id,
+            "parent_checkpoint": checkpoint_id,
+            "team": team_name,
+            "type": "micro_checkpoint",
+            **(metadata or {})
+        }
+        self.graph.add_node(micro_id, data=node_data)
+        if self.rust_engine:
+            self.rust_engine.add_node(micro_id, 1.0)
+
+        if checkpoint_id and checkpoint_id in self.graph.nodes:
+            self.graph.add_edge(checkpoint_id, micro_id)
+            if not nx.is_directed_acyclic_graph(self.graph):
+                self.graph.remove_edge(checkpoint_id, micro_id)
+                self.graph.remove_node(micro_id)
+                if self.rust_engine:
+                    self.rust_engine.remove_node(micro_id)
+                return False
+            if self.rust_engine:
+                self.rust_engine.add_edge(checkpoint_id, micro_id)
+        return True
+
+    def add_micro_checkpoint_batch(self, checkpoint_id: str, micro_prefix: str, count: int, team_name: Optional[str] = None) -> List[str]:
+        """Bulk registration of micro-checkpoints into the DAG for large scale workloads."""
+        created = []
+        for i in range(count):
+            mid = f"{micro_prefix}_{i}"
+            if self.add_micro_checkpoint(checkpoint_id, mid, team_name=team_name, metadata={"index": i}):
+                created.append(mid)
+        return created
     
     # ─── Echo Propagation ────────────────────────────────────────
     

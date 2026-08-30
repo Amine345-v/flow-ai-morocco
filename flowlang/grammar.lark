@@ -64,11 +64,19 @@ flow_decl: "flow" IDENT "(" flow_params ")" "{" flow_header* flow_stmt* "}"
 flow_params: "using" ":" ident_list
 flow_header: "context" "retention" ":" "checkpoint" ";" | "distribution" ":" ("round_robin"|"weighted"|"priority") ";" | "merge_policy" ":" ("last_wins"|"deep_merge"|"crdt") ";"
 
-flow_stmt: checkpoint | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | action_stmt ";" | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | audit_stmt ";" | confirm_stmt ";" | var_assign ";"
+flow_stmt: checkpoint | micro_checkpoint | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | action_stmt ";" | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | audit_stmt ";" | confirm_stmt ";" | var_assign ";"
 
 checkpoint: "checkpoint" STRING ("(" "report" ":" expr_list ")")? "{" local_stmt* "}"
 
-local_stmt: var_assign ";" | action_stmt ";" | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | confirm_stmt ";"
+micro_checkpoint: ("micro_checkpoint" | "micro_check") STRING ("(" micro_opts ")")? "{" local_stmt* "}"
+micro_opts: micro_opt ("," micro_opt)*
+micro_opt: "using" ":" IDENT -> micro_using_opt
+         | "batch" ":" expr -> micro_batch_opt
+         | "items" ":" expr -> micro_items_opt
+         | "strategy" ":" ("parallel"|"round_robin"|"chunked"|"adaptive") -> micro_strategy_opt
+         | "threshold" ":" NUMBER -> micro_threshold_opt
+
+local_stmt: var_assign ";" | action_stmt ";" | micro_checkpoint | if_stmt | while_stmt | for_stmt | par_stmt | race_stmt | flow_control | context_stmt ";" | chain_touch_stmt ";" | system_call_stmt ";" | deploy_stmt ";" | confirm_stmt ";"
 
 if_stmt: "if" "(" expr ")" block ("else" block)?
 while_stmt: "while" "(" expr ")" block

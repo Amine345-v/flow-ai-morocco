@@ -28,3 +28,14 @@ class RuntimeContext:
     variables: Dict[str, Any]
     checkpoint_reports: List[Any]
 
+@dataclass
+class MicroCheckpointSpec:
+    name: str
+    team: Optional[str] = None
+    batch_expr: Optional[Any] = None
+    strategy: str = "parallel"
+    threshold: Optional[float] = None
+    executed_count: int = 0
+    passed_count: int = 0
+
+
