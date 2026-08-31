@@ -131,7 +131,7 @@ class MCPGatewayEngine:
             return {"error": f"Action execution failed: {ex}"}
 
     def execute_cowork_prompt(self, domain: str, prompt: str) -> Dict[str, Any]:
-        """Execute dynamic AI-driven CoWork task using Gemini 3.6 Flash and update JOL Studio IDE state."""
+        """Execute dynamic AI-driven CoWork task using configured Gemini/OpenAI/Claude/DeepSeek AI model and update JOL Studio IDE state."""
         try:
             import time
             from pathlib import Path
