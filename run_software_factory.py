@@ -16,16 +16,15 @@ def run_app():
     # Execute the flow
     # The runtime handles stateful transitions between checkpoints (Stages)
     try:
-        results = rt.run_flow("software_factory")
+        results = rt.run_flow("build_crm_saas")
         
         print("\n--- Project Completion Summary ---")
-        # Inspect the Maestro (Process Tree) for the family tree of work
-        p_info = rt.processes["software_project"]
-        print(f"Maestro Roadmap Marks: {p_info['marks']}")
+        p_info = rt.processes.get("product_map", {})
+        print(f"Maestro Roadmap Marks: {p_info.get('marks', {})}")
         
         # Inspect the Guiding Thread (Chain) for causal hits
-        c_info = rt.chains["build_sequence"]
-        print(f"System Sequence Status: {c_info['effects']}")
+        c_info = rt.chains.get("development_pipeline", {})
+        print(f"System Sequence Status: {c_info.get('effects', {})}")
         
     except Exception as e:
         print(f"Error during execution: {e}")

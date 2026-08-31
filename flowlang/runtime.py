@@ -672,24 +672,32 @@ class Runtime:
             pass
 
     def _exec_context_stmt(self, node: Tree, ctx: EvalContext):
-        op = str(node.children[0]) if isinstance(node.children[0], Token) else node.children[0]
+        if not node.children:
+            return
 
-        # Max context size limit (number of keys in variables)
+        op = "update"
+        args_tree = None
+        if isinstance(node.children[0], Token):
+            op = str(node.children[0].value)
+            if len(node.children) > 1:
+                args_tree = node.children[1]
+        elif isinstance(node.children[0], Tree):
+            args_tree = node.children[0]
+
         MAX_CONTEXT_SIZE = int(os.getenv("FLOWLANG_MAX_CONTEXT_SIZE", "1000"))
-        # Check size before any operation
-        if len(ctx.variables) > MAX_CONTEXT_SIZE:
-            # Allow prune/snapshot even if full, but block update
-            if op not in ("prune", "snapshot"):
-                from .errors import ContextOverflowError
-                raise ContextOverflowError(f"Context size {len(ctx.variables)} exceeds limit {MAX_CONTEXT_SIZE}")
+        if len(ctx.variables) > MAX_CONTEXT_SIZE and op not in ("prune", "snapshot"):
+            from .errors import ContextOverflowError
+            raise ContextOverflowError(f"Context size {len(ctx.variables)} exceeds limit {MAX_CONTEXT_SIZE}")
 
         if op == "update":
-            # update(args...)
-            args_tree = node.children[1] if len(node.children) > 1 else None
             items = []
             if isinstance(args_tree, Tree) and args_tree.data == "expr_list":
                 for e in args_tree.children:
-                    items.append(self._eval_expr(e, ctx))
+                    val = self._eval_expr(e, ctx)
+                    items.append(val)
+                    if isinstance(e, Tree) and e.data == "name":
+                        var_name = str(e.children[0].value)
+                        ctx.variables[var_name] = val
             ctx.reports.append(items)
             self.log(f"[context.update] +{len(items)} items")
 
@@ -817,7 +825,7 @@ class Runtime:
 
     def _exec_chain_touch(self, node: Tree, ctx: EvalContext):
         chain_name = str(node.children[0])
-        node_name = node.children[1].value
+        node_name = str(node.children[1].value).strip('"')
         effect = None
         # find an expr child if present
         for ch in node.children:
@@ -831,7 +839,7 @@ class Runtime:
         ch = self.chains.get(chain_name)
         if not ch:
             raise RuntimeFlowError(f"Unknown chain '{chain_name}'")
-        if str(node_name) not in ch["nodes"]:
+        if node_name not in ch["nodes"]:
             raise RuntimeFlowError(f"Chain '{chain_name}' has no node '{node_name}'")
             
         # Use helper for actual application
@@ -2087,127 +2095,185 @@ class Runtime:
     def _truthy(self, v: Any) -> bool:
         return bool(v)
     def _export_ide_state(self, flow_name: str, ctx: EvalContext):
-        export_path = os.getenv("FLOWLANG_IDE_EXPORT_PATH")
-        if not export_path:
-            return
-            
-        # 1. Flow Map
-        flow_data = {
-            "id": flow_name,
-            "name": flow_name,
-            "team": [],
-            "checkpoints": [{"id": cp, "name": cp} for cp in ctx.checkpoints],
-            "currentCheckpointIndex": ctx.checkpoints.index(ctx.current_stage) if ctx.current_stage in ctx.checkpoints else 0
-        }
-        
-        seen_ids = set()
-        
-        def add_order(o):
-            if hasattr(o, "id") and o.id not in seen_ids:
-                flow_data["team"].append({
-                    "id": o.id,
-                    "type": str(o.kind).upper() if hasattr(o, "kind") else "TRY",
-                    "content": str(o.payload)[:50] + "...", 
-                    "status": "completed",
-                    "result": str(o.payload)
-                })
-                seen_ids.add(o.id)
-
-        for k, v in ctx.variables.items():
-            if isinstance(v, Order):
-                add_order(v)
-            elif isinstance(v, list):
-                for item in v:
-                    if isinstance(item, Order):
-                        add_order(item)
-
-        # 2. Chain Map
-        chain_data = []
-        for cname, cinfo in self.chains.items():
-            for node in cinfo["nodes"]:
-                eff = cinfo["effects"].get(node, 0)
-                status = "active" if eff > 0 else "pending"
-                if eff == "satisfied": status = "completed"
-                chain_data.append({
-                    "id": f"{cname}_{node}",
-                    "order": { 
-                        "id": f"dummy_{node}", 
-                        "type": "TRY", 
-                        "content": f"{cname}: {node}", 
-                        "status": status
-                    },
-                    "impactLevel": 1
-                })
-
-        # 3. Tree Map (Maestro)
-        tree_data = None
-        if self.processes:
-            pname = list(self.processes.keys())[0]
-            pinfo = self.processes[pname]
-            root_node = pinfo["root"]
-            
-            def build_tree(node_name):
-                children_names = pinfo["branches"].get(node_name, [])
-                status_raw = pinfo["marks"].get(node_name, "healthy")
-                
-                status_map = {
-                    "pending": "expanded",
-                    "Updated": "healthy",
-                    "Refined": "healthy",
-                    "Coded": "healthy",
-                    "Released": "healthy",
-                    "Fixing": "atrophied"
-                }
-                
-                # Default logic if not in map
-                ide_status = status_map.get(str(status_raw), "healthy")
-
-                node_obj = {
-                    "id": node_name,
-                    "name": node_name,
-                    "geneticCode": self._get_binary_path(pname, node_name),
-                    "type": "root" if node_name == root_node else ("branch" if children_names else "leaf"),
-                    "status": ide_status,
-                }
-                if children_names:
-                    node_obj["children"] = [build_tree(c) for c in children_names]
-                return node_obj
-            
-            if root_node:
-                tree_data = build_tree(root_node)
-        
-        # 4. Files Map (Artifacts)
-        files_data = []
-        # Current directory of execution (likely the factory or project root)
-        # We look for files in the current directory or a 'dist' folder if it exists
-        search_paths = [".", "./dist"]
-        for sp in search_paths:
-            if os.path.exists(sp):
-                for f in os.listdir(sp):
-                    if f.endswith(".js") or f.endswith(".test.js") or f.endswith(".json"):
-                        fpath = os.path.join(sp, f)
-                        if os.path.isfile(fpath):
-                            try:
-                                with open(fpath, 'r', encoding='utf-8') as file_ref:
-                                    content = file_ref.read()
-                                files_data.append({
-                                    "name": f,
-                                    "content": content,
-                                    "status": "healthy"
-                                })
-                            except Exception:
-                                pass
-
-        full_export = {
-            "flow": flow_data,
-            "chain": chain_data,
-            "tree": tree_data,
-            "files": files_data
-        }
-        
+        """Export runtime state for JOL Studio IDE live visualization."""
         try:
-            with open(export_path, 'w', encoding='utf-8') as f:
-                json.dump(full_export, f, indent=2)
-            self.log(f"[IDE] Exported state to {export_path}")
-        except Exception as e:
-            self.log(f"[IDE] Failed to export state: {e}")
+            cps = []
+            micro_reports = ctx.variables.get("__micro_reports__") or {}
+            for raw_cp in getattr(ctx, "checkpoints", []):
+                cp_name = str(raw_cp).strip('"')
+                mcp_reports = micro_reports.get(cp_name)
+                micro_cps = []
+                if mcp_reports:
+                    micro_cps.append({
+                        "id": f"{cp_name}_mcp",
+                        "name": cp_name,
+                        "assignedTeam": mcp_reports.get("team", ""),
+                        "batchItems": [],
+                        "strategy": "parallel",
+                        "threshold": 1.0,
+                        "passedCount": mcp_reports.get("passed", 0),
+                        "totalCount": mcp_reports.get("total", 0),
+                        "results": mcp_reports.get("results", [])
+                    })
+
+                cps.append({
+                    "id": cp_name,
+                    "name": cp_name,
+                    "report": str(ctx.variables.get(f"report_{cp_name}", ctx.variables.get("raw_output", ""))),
+                    "microCheckpoints": micro_cps
+                })
+
+            teams_dict = {}
+            if hasattr(self, "teams") and isinstance(self.teams, dict):
+                for k, v in self.teams.items():
+                    if hasattr(v, "__dict__"):
+                        teams_dict[k] = {vk: str(vv) for vk, vv in v.__dict__.items()}
+                    elif isinstance(v, dict):
+                        teams_dict[k] = {vk: str(vv) for vk, vv in v.items()}
+                    else:
+                        teams_dict[k] = str(v)
+
+            # 1. Flow Map
+            flow_data = {
+                "id": flow_name,
+                "name": flow_name,
+                "usingTeams": list(teams_dict.keys()),
+                "teams": teams_dict,
+                "checkpoints": cps if cps else [{"id": cp, "name": cp} for cp in getattr(ctx, "checkpoints", [])],
+                "currentCheckpointIndex": getattr(ctx, "checkpoint_index", 0),
+                "mergePolicy": getattr(ctx, "merge_policy", "deep_merge")
+            }
+            
+            seen_ids = set()
+            flow_team_orders = []
+            def add_order(o):
+                if hasattr(o, "id") and o.id not in seen_ids:
+                    flow_team_orders.append({
+                        "id": o.id,
+                        "type": str(getattr(o, "kind", "TRY")).upper(),
+                        "content": str(getattr(o, "payload", ""))[:50] + "...", 
+                        "status": "completed",
+                        "result": str(getattr(o, "payload", ""))
+                    })
+                    seen_ids.add(o.id)
+
+            for k, v in getattr(ctx, "variables", {}).items():
+                if isinstance(v, Order):
+                    add_order(v)
+                elif isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, Order):
+                            add_order(item)
+            if flow_team_orders:
+                flow_data["orders"] = flow_team_orders
+
+            # 2. Chain Map
+            chain_data = []
+            for cname, cinfo in getattr(self, "chains", {}).items():
+                for node in cinfo.get("nodes", []):
+                    eff = cinfo.get("effects", {}).get(node, 0)
+                    status = "active" if eff > 0 else "pending"
+                    if eff == "satisfied": status = "completed"
+                    chain_data.append({
+                        "id": f"{cname}_{node}",
+                        "name": str(node),
+                        "order": { 
+                            "id": f"dummy_{node}", 
+                            "type": "TRY", 
+                            "content": f"{cname}: {node}", 
+                            "status": status
+                        },
+                        "impactLevel": float(eff) if isinstance(eff, (int, float)) else 1.0
+                    })
+
+            # 3. Tree Map (Maestro)
+            tree_data = {
+                "id": "root",
+                "name": flow_name,
+                "geneticCode": "0",
+                "type": "root",
+                "status": "healthy",
+                "children": []
+            }
+            if getattr(self, "processes", None):
+                pname = list(self.processes.keys())[0]
+                pinfo = self.processes[pname]
+                root_node = pinfo.get("root")
+                
+                def build_tree(node_name):
+                    children_names = pinfo.get("branches", {}).get(node_name, [])
+                    status_raw = pinfo.get("marks", {}).get(node_name, "healthy")
+                    
+                    status_map = {
+                        "pending": "expanded",
+                        "Updated": "healthy",
+                        "Refined": "healthy",
+                        "Coded": "healthy",
+                        "Released": "healthy",
+                        "Fixing": "atrophied"
+                    }
+                    ide_status = status_map.get(str(status_raw), "healthy")
+
+                    node_obj = {
+                        "id": node_name,
+                        "name": node_name,
+                        "geneticCode": self._get_binary_path(pname, node_name),
+                        "type": "root" if node_name == root_node else ("branch" if children_names else "leaf"),
+                        "status": ide_status,
+                    }
+                    if children_names:
+                        node_obj["children"] = [build_tree(c) for c in children_names]
+                    return node_obj
+                
+                if root_node:
+                    tree_data = build_tree(root_node)
+            
+            # 4. Files Map (Artifacts)
+            files_data = []
+            search_paths = [".", "./dist"]
+            for sp in search_paths:
+                if os.path.exists(sp):
+                    for f in os.listdir(sp):
+                        if f.endswith(".js") or f.endswith(".test.js") or f.endswith(".json"):
+                            fpath = os.path.join(sp, f)
+                            if os.path.isfile(fpath):
+                                try:
+                                    with open(fpath, 'r', encoding='utf-8') as file_ref:
+                                        content = file_ref.read()
+                                    files_data.append({
+                                        "name": f,
+                                        "content": content,
+                                        "status": "healthy"
+                                    })
+                                except Exception:
+                                    pass
+
+            full_export = {
+                "flow": flow_data,
+                "chain": chain_data,
+                "tree": tree_data,
+                "files": files_data,
+                "resources": {},
+                "lastUpdate": time.strftime("%H:%M:%S")
+            }
+
+            targets = [
+                Path("./.flowlang_state/ide_state.json"),
+                Path("../jol-ide/public/ide_state.json"),
+                Path("jol-ide/public/ide_state.json"),
+                Path(r"c:\Users\asusu\CascadeProjects\flowlang\jol-ide\public\ide_state.json")
+            ]
+            env_target = os.getenv("FLOWLANG_IDE_EXPORT_PATH")
+            if env_target:
+                targets.append(Path(env_target))
+
+            dumped = json.dumps(full_export, indent=2, default=str)
+            for target in targets:
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(dumped, encoding="utf-8")
+                    self.log(f"[IDE] Successfully exported state to {target}")
+                except Exception as e:
+                    self.log(f"[IDE] Failed to export state to {target}: {e}")
+        except Exception as err:
+            self.log(f"[IDE] Error building export payload: {err}")

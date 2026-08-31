@@ -6,6 +6,16 @@ from typing import Any, Dict, List, Optional
 import time
 import logging
 
+# Auto-load .env file if present
+_env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.env"))
+if os.path.exists(_env_path):
+    with open(_env_path, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from .types import TypedValue, ValueTag
 
 # Optional third-party SDK imports guarded to avoid hard deps
