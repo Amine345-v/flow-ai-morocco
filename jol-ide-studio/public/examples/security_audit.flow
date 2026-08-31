@@ -1,0 +1,117 @@
+// ============================================================================
+// FlowLang — Cybersecurity Audit Engine (ISO-27001 & SOC2 Compliance)
+// ============================================================================
+// Real-world scenario: An enterprise cloud infrastructure audit.
+// The automated audit team runs high-density micro-checks across all cloud subdomains,
+// checks IAM policies, scans container images, and enforces remediation gates.
+// ============================================================================
+
+process compliance_map "ISO-27001 Roadmap" {
+    root: "Certification";
+    branch "Certification" -> ["AccessControl", "DataEncryption", "NetworkSecurity", "IncidentResponse"];
+    branch "AccessControl" -> ["MFA", "IAM_Policies", "ServiceAccounts"];
+    branch "DataEncryption" -> ["KMS_Keys", "S3_Encryption", "TLS_Certificates"];
+    branch "NetworkSecurity" -> ["Firewalls", "VPC_Peering", "WAF_Rules"];
+    
+    node "MFA" { priority: "critical"; status: "pending"; };
+    node "IAM_Policies" { priority: "critical"; status: "pending"; };
+    node "KMS_Keys" { priority: "high"; status: "pending"; };
+    node "Firewalls" { priority: "high"; status: "pending"; };
+    
+    policy: {
+        risk: 0.10;
+        audit_required: true;
+    };
+    audit: enabled;
+}
+
+chain audit_pipeline {
+    nodes: [Reconnaissance, VulnerabilityScan, RiskAssessment, Remediation, AuditVerification, FinalCertification];
+    propagation: causal(decay=0.9, forward=true, backprop=true);
+}
+
+role SecurityAuditor {
+    capabilities: [code_read, run_tests, audit];
+}
+
+team scanner_squad   : Command<Search> [size=4, distribution=round_robin];
+team auditor_board   : Command<Judge>  [size=3, distribution=round_robin, role=SecurityAuditor];
+team secops_engineers: Command<Try>    [size=2, distribution=round_robin];
+team ciso_monologue  : Command<Communicate> [size=1];
+
+flow compliance_audit(using: scanner_squad, auditor_board, secops_engineers, ciso_monologue) {
+    context retention: checkpoint;
+    merge_policy: deep_merge;
+// ── Stage 1: Discovery & Asset Mapping ──────────────────────────────────
+    checkpoint "asset_discovery" (report: asset_inventory) {
+        ciso_brief = ciso_monologue.ask("Define the perimeter for our annual SOC2 Type II and ISO-27001 audit");
+
+        par {
+            subdomains = scanner_squad.search("Enumerate active AWS subdomains and exposed API gateways");
+            storage_buckets = scanner_squad.search("Scan for public S3 buckets and unencrypted DynamoDB tables");
+            iam_roles = scanner_squad.search("Fetch IAM roles with AdministratorAccess or wildcards");
+        }
+
+        asset_inventory = ciso_monologue.ask("Consolidate discovered infrastructure assets into an audit scope");
+
+        context.update(ciso_brief, subdomains, storage_buckets, iam_roles, asset_inventory);
+        audit_pipeline.touch("Reconnaissance", effect=1.0);
+        compliance_map.mark("AccessControl", "in_progress", reason="Perimeter discovery complete");
+    }
+// ── Stage 2: Automated Micro-Vulnerability Scanning ────────────────────
+    checkpoint "vuln_scan_stage" (report: scan_summary) {
+        endpoints = ["api.crm.internal", "auth.crm.internal", "billing.crm.internal", "storage.crm.internal", "k8s-cluster.crm.internal"];
+// Micro-checkpoint: High-density parallel security checks on each endpoint
+        micro_checkpoint "endpoint_security_scan" (using: scanner_squad, batch: endpoints, strategy: parallel, threshold: 0.8) {
+            check_result = scanner_squad.search(item);
+        }
+
+        micro_checkpoint "iam_policy_audit" (using: auditor_board, batch: endpoints, strategy: round_robin, threshold: 1.0) {
+            iam_eval = auditor_board.judge(item, "Verify zero trust RBAC: no excess privileges or unrotated API keys");
+        }
+
+        scan_summary = ciso_monologue.ask("Generate vulnerability metrics and critical CVE count");
+
+        context.update(scan_summary);
+        audit_pipeline.touch("VulnerabilityScan", effect=0.9);
+        compliance_map.mark("MFA", "in_progress", reason="Vulnerability scan complete");
+    }
+// ── Stage 3: Risk Assessment ───────────────────────────────────────────
+    checkpoint "risk_assessment" (report: risk_report) {
+        risk_report = auditor_board.judge(scan_summary, "Calculate Risk Score based on CVSS 3.1 criteria");
+        
+        compliance_map.mark("IAM_Policies", "in_progress", reason="Risk assessed");
+        audit_pipeline.touch("RiskAssessment", effect=0.85);
+
+        context.update(risk_report);
+    }
+// ── Stage 4: Automated Remediation ──────────────────────────────────────
+    checkpoint "remediation_logic" (report: fix_manifest) {
+        critical_issues = ["Rotate Root Keys", "Enforce MFA on AWS SSO", "Encrypt S3 Buckets", "Patch OpenSSL Vulnerability"];
+
+        micro_checkpoint "patch_execution" (using: secops_engineers, batch: critical_issues, strategy: round_robin) {
+            patch_res = secops_engineers.try(item);
+        }
+
+        fix_manifest = ciso_monologue.ask("Summarize all deployed security patches and infrastructure changes");
+
+        context.update(fix_manifest);
+        audit_pipeline.touch("Remediation", effect=0.95);
+        compliance_map.mark("KMS_Keys", "implemented", reason="Encryption enforced");
+        compliance_map.mark("Firewalls", "implemented", reason="WAF rules updated");
+    }
+// ── Stage 5: Final Validation & Re-Audit ────────────────────────────────
+    checkpoint "validation" (report: cert_decision) {
+        cert_decision = auditor_board.judge(fix_manifest, "Confirm ISO-27001 compliance criteria met");
+
+        if (cert_decision.pass) {
+            compliance_map.mark("Certification", "deployed", reason="ISO-27001 Certified");
+            audit_pipeline.touch("FinalCertification", effect=1.0);
+        } else {
+            compliance_map.mark("Certification", "failed", reason="Re-audit required");
+            audit_pipeline.touch("AuditVerification", effect=0.2);
+            flow.back_to("remediation_logic");
+        }
+    }
+}
+

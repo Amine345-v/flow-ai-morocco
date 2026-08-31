@@ -1,0 +1,145 @@
+// ============================================================================
+// FlowLang — Quantitative Financial Risk & AI Trading Engine (Example 1)
+// ============================================================================
+// Real-world scenario: An enterprise quantitative hedge fund builds, backtests,
+// audits, and deploys a deep learning algorithmic trading model.
+// ============================================================================
+
+result JudgeResult {
+  confidence: number;
+  score: number;
+  pass: boolean;
+};
+
+result TryResult {
+  output: string;
+  metrics: dict;
+};
+
+result SearchResult {
+  hits: list;
+};
+
+result CommunicateResult {
+  text: string;
+};
+
+role QuantDeveloper {
+  capabilities: [code_read, code_write, run_tests, deploy];
+}
+
+policy ModelRiskPolicy {
+  rules: ["max_drawdown_15pct", "enforce_var_99", "Strict"];
+}
+
+team QuantSearchers     : Command<Search>      [size=3, distribution=round_robin];
+team ModelExperimenters : Command<Try>         [size=4, distribution=round_robin];
+team RiskJudges         : Command<Judge>       [size=2, distribution=round_robin, role=QuantDeveloper, policy=ModelRiskPolicy];
+team QuantMonologue     : Command<Communicate> [size=1];
+
+chain ModelPipelineChain {
+  nodes: [DataIngestion, FeatureEngineering, ModelTraining, Backtesting, RiskAudit, Deployment];
+  propagation: causal(decay=0.8, backprop=true, forward=true);
+  labels: { asset_class: "equities", environment: "production" };
+  constraints: {
+    max_runtime: 3600;
+    require_eval: true;
+  };
+}
+
+process ProductTree "Quant Trading Model Roadmap" {
+  root: "TradingEngine";
+  branch "TradingEngine" -> ["DataPipeline", "ModelCore", "RiskSystem"];
+  branch "DataPipeline" -> ["MarketData", "AlternativeData"];
+  branch "ModelCore" -> ["TransformerModel", "AlphaGenerators"];
+  branch "RiskSystem" -> ["VaR_Calculator", "StopLossGuard"];
+
+  node "TransformerModel" { priority: "critical"; status: "pending"; };
+  node "VaR_Calculator" { priority: "high"; status: "pending"; };
+
+  policy: { risk: 0.1; };
+  audit: enabled;
+}
+
+flow BuildProbModel(using: QuantSearchers, ModelExperimenters, RiskJudges, QuantMonologue) {
+  context retention: checkpoint;
+  merge_policy: deep_merge;
+
+  // ── Stage 1: Market Research & Feature Discovery ────────────────────────
+  checkpoint "Understand" {
+    // Parallel data ingestion across sources
+    par {
+      market_data = QuantSearchers.search("Fetch 10-year tick data for S&P 500 futures and options flow");
+      alt_data = QuantSearchers.search("Scrape financial news sentiment and SEC 10-K filing embeddings");
+    }
+
+    // Race demo: pick fastest strategy formulation
+    race {
+      fast_idea = QuantMonologue.ask("Formulate high-frequency momentum strategy");
+      deep_idea = RiskJudges.judge("Formulate mean-reversion statistical arbitrage model", "sharpe > 2.0");
+    }
+
+    report = QuantMonologue.ask("Synthesize market data and strategy formulation into model specification");
+    S1 = QuantSearchers.search("Identify optimal neural architecture for multi-asset forecasting");
+    J1 = RiskJudges.judge(S1, "Verify statistical stationarity and feature relevance");
+
+    context.update(report, S1, J1);
+    ModelPipelineChain.touch("DataIngestion", effect=1.0);
+    ProductTree.mark("DataPipeline", "in_progress", reason="Data ingestion complete");
+  }
+
+  // ── Stage 2: Feature Engineering & Model Training ───────────────────────
+  checkpoint "Design" {
+    params = {"learning_rate": 0.001, "batch_size": 128, "seq_length": 60};
+    T1 = ModelExperimenters.try("Train Transformer Alpha Model on historical tick data", params);
+    J2 = RiskJudges.judge(T1, "Evaluate Out-of-Sample Sharpe Ratio > 1.8");
+
+    conf = J2.confidence;
+    context.update(params, T1, J2, conf);
+
+    ModelPipelineChain.touch("FeatureEngineering", effect=conf);
+    ModelPipelineChain.propagate("ModelTraining", conf);
+
+    if (conf >= 0.7) {
+      deploy(Model="AlphaTransformer_v1", env="staging");
+    } else {
+      alt = ModelExperimenters.try("Hyperparameter tuning with Bayesian Optimization", {"learning_rate": 0.0005});
+      J3 = RiskJudges.judge(alt, "Sharpe Ratio");
+      context.update(alt, J3, J3.confidence);
+    }
+
+    ProductTree.mark("ModelCore", "implemented", reason="Model training complete");
+  }
+
+  // ── Stage 3: High-Density Micro-Backtesting Suite ───────────────────────
+  checkpoint "MicroBacktesting" {
+    historical_years = ["2020_COVID_Crash", "2021_Bull_Run", "2022_Inflation_Hike", "2023_Tech_Rally", "2024_Macro_Vol"];
+
+    micro_checkpoint "stress_test_suite" (using: ModelExperimenters, batch: historical_years, strategy: parallel, threshold: 0.8) {
+      bt_res = ModelExperimenters.try(item);
+    }
+
+    micro_checkpoint "risk_limit_checks" (using: RiskJudges, batch: historical_years, strategy: round_robin, threshold: 1.0) {
+      risk_res = RiskJudges.judge(item, "Verify Value-at-Risk (VaR 99%) and Max Drawdown < 15%");
+    }
+
+    ModelPipelineChain.touch("Backtesting", effect=0.95);
+    ModelPipelineChain.touch("RiskAudit", effect=1.0);
+    ProductTree.mark("RiskSystem", "implemented", reason="Micro-backtesting passed");
+  }
+
+  // ── Stage 4: Governance Approval & Production Launch ────────────────────
+  checkpoint "ProductionDeploy" {
+    confirm("Head of Quantitative Trading: Approve AlphaTransformer_v1 for live execution?", timeout=3600) -> approved;
+
+    if (approved) {
+      live_result = ModelExperimenters.try("Deploy model to live execution engine with automated kill-switch");
+      ModelPipelineChain.touch("Deployment", effect=1.0);
+      ProductTree.mark("TradingEngine", "deployed", reason="Live trading active");
+    } else {
+      flow.back_to("Design");
+    }
+
+    ProductTree.audit();
+  }
+}

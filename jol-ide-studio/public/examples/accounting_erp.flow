@@ -1,0 +1,69 @@
+flow "accounting_erp_system" {
+  using teams [
+    "financial_architects",
+    "ledger_engineers",
+    "compliance_auditors",
+    "ui_designers"
+  ]
+
+  team "financial_architects" {
+    kind Search
+    size 3
+    distribution round_robin
+    role FinancialAnalyst
+    policy StandardGAAP
+  }
+
+  team "ledger_engineers" {
+    kind Try
+    size 5
+    distribution round_robin
+    role SoftwareEngineer
+    policy CleanCode
+  }
+
+  team "compliance_auditors" {
+    kind Judge
+    size 3
+    distribution round_robin
+    role CPAAuditor
+    policy StrictBalance
+  }
+
+  team "ui_designers" {
+    kind Communicate
+    size 2
+    distribution round_robin
+    role ProductDesigner
+    policy HighAesthetics
+  }
+
+  checkpoint "discovery_and_coa_setup" {
+    team "financial_architects" {
+      SEARCH "define chart of accounts structure: assets, liabilities, equity, revenue, expenses"
+      CHECK min_pass = 1.0
+    }
+  }
+
+  checkpoint "double_entry_ledger_synthesis" {
+    team "ledger_engineers" {
+      TRY "synthesize double-entry general ledger with debit credit balance validation"
+      TRY "build invoicing module with VAT calculation and payment tracking"
+      CHECK min_pass = 1.0
+    }
+  }
+
+  checkpoint "financial_statement_audit" {
+    team "compliance_auditors" {
+      JUDGE "audit income statement balance sheet and trial balance correctness" criteria "score"
+      CHECK min_pass = 1.0
+    }
+  }
+
+  checkpoint "production_app_export" {
+    team "ui_designers" {
+      ASK "export complete React Accountant ERP application to JOL Studio workspace"
+      CHECK min_pass = 1.0
+    }
+  }
+}

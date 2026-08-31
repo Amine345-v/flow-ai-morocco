@@ -1,0 +1,159 @@
+// ============================================================================
+// FlowLang — Hospital & Clinical Emergency Governance Engine
+// ============================================================================
+// Real-world scenario: Smart Hospital Emergency Triage and Clinical Workflow.
+// Handles multi-patient admission, parallel diagnostic lab scans, AI clinical
+// history analysis, treatment authorization, and medical governance audit.
+// ============================================================================
+
+result MedicalJudgeResult {
+  confidence: number;
+  score: number;
+  pass: boolean;
+  notes: string;
+};
+
+result ResourceSearchResult {
+  available_beds: number;
+  doctors_on_duty: list;
+  medications_in_stock: list;
+};
+
+result ExecutionResult {
+  status: string;
+  record_id: string;
+  billing_amount: number;
+};
+
+result ConsultationResult {
+  text: string;
+  recommendation: string;
+};
+
+process HospitalTree "Smart Hospital Operations" {
+  root: "PatientCare";
+  branch "PatientCare" -> ["EmergencyTriage", "DiagnosticLabs", "InpatientWards", "Pharmacy"];
+  branch "EmergencyTriage" -> ["TraumaBay", "FastTrackER"];
+  branch "DiagnosticLabs" -> ["Radiology", "BloodLab", "GenomicScan"];
+  branch "InpatientWards" -> ["ICU", "GeneralWard"];
+
+  node "TraumaBay" { status: "pending"; capacity: 4; };
+  node "Radiology" { status: "pending"; capacity: 2; };
+  node "ICU" { status: "pending"; capacity: 10; };
+  node "Pharmacy" { status: "pending"; capacity: 100; };
+
+  policy: {
+    risk: 0.05;
+    require_reason: true;
+    protected_nodes: "PatientCare";
+  };
+  audit: enabled;
+}
+
+chain PatientTreatmentChain {
+  nodes: [Triage, DiagnosticScan, DoctorConsultation, TreatmentPlan, MedicationDispense, Discharge];
+  propagation: causal(decay=0.85, backprop=true, forward=true);
+  labels: { priority: "urgent", sector: "clinical" };
+  constraints: {
+    min_beds: 1;
+    require_protocol: true;
+  };
+}
+
+role MedicalDoctor {
+  capabilities: [code_read, run_tests, audit];
+}
+
+team TriageSearchers   : Command<Search>      [size=2, distribution=round_robin];
+team DiagnosticLab     : Command<Try>         [size=3, distribution=round_robin];
+team ChiefPhysicians   : Command<Judge>       [size=2, distribution=round_robin, role=MedicalDoctor];
+team ClinicalAdvisorAI : Command<Communicate> [size=1];
+
+flow PatientAdmission(using: TriageSearchers, DiagnosticLab, ChiefPhysicians, ClinicalAdvisorAI) {
+  context retention: checkpoint;
+  merge_policy: deep_merge;
+
+  // ── Stage 1: Emergency Triage & Resource Allocation ──────────────────────
+  checkpoint "ReceptionTriage" (report: triage_summary) {
+    triage_brief = ClinicalAdvisorAI.ask("Conduct immediate AI triage assessment for incoming emergency patient");
+
+    par {
+      doctor_availability = TriageSearchers.search("Find available ER physicians and Trauma specialists");
+      bed_status = TriageSearchers.search("Check available ICU and FastTrack ER beds");
+    }
+
+    HospitalTree.mark("EmergencyTriage", "in_progress", reason="Patient arrived in ER");
+    PatientTreatmentChain.touch("Triage", effect=1.0);
+
+    triage_summary = ClinicalAdvisorAI.ask("Synthesize triage priority level and assign trauma bay");
+    context.update(triage_brief, doctor_availability, bed_status, triage_summary);
+  }
+
+  // ── Stage 2: Parallel Micro-Diagnostic Lab Suite ──────────────────────────
+  checkpoint "DiagnosticExamination" (report: lab_report) {
+    lab_tests = ["CBC_Blood_Panel", "Chest_CT_Scan", "ECG_Heart_Monitor", "Toxicology_Screen"];
+
+    // Micro-checkpoint: Execute diagnostic tests across lab team workers
+    micro_checkpoint "lab_suite_execution" (using: DiagnosticLab, batch: lab_tests, strategy: parallel, threshold: 1.0) {
+      test_result = DiagnosticLab.try(item);
+    }
+
+    micro_checkpoint "result_validation" (using: ChiefPhysicians, batch: lab_tests, strategy: round_robin, threshold: 0.9) {
+      val_result = ChiefPhysicians.judge(item, "Verify lab test result against normal clinical reference ranges");
+    }
+
+    lab_report = ClinicalAdvisorAI.ask("Summarize all diagnostic lab outputs and highlight abnormal biomarkers");
+
+    HospitalTree.mark("DiagnosticLabs", "in_progress", reason="Labs completed");
+    PatientTreatmentChain.touch("DiagnosticScan", effect=0.95);
+    context.update(lab_report);
+  }
+
+  // ── Stage 3: Clinical Decision & Treatment Planning ─────────────────────
+  checkpoint "TreatmentPlanning" (report: treatment_plan) {
+    ai_guidelines = ClinicalAdvisorAI.ask("Analyze medical history, lab results, and suggest evidence-based therapy");
+    treatment_plan = ChiefPhysicians.judge(ai_guidelines, "Approve clinical treatment plan and drug dosage");
+
+    HospitalTree.mark("InpatientWards", "in_progress", reason="Treatment plan approved");
+    PatientTreatmentChain.touch("DoctorConsultation", effect=0.9);
+    PatientTreatmentChain.touch("TreatmentPlan", effect=0.95);
+
+    context.update(ai_guidelines, treatment_plan);
+  }
+
+  // ── Stage 4: Pharmacy Dispensing & Safety Checks ─────────────────────────
+  checkpoint "MedicationDispensing" (report: pharmacy_status) {
+    meds_list = ["Iv_Antibiotics", "Analgesics", "Saline_Solution"];
+
+    micro_checkpoint "allergy_and_interaction_check" (using: ChiefPhysicians, batch: meds_list, threshold: 1.0) {
+      drug_check = ChiefPhysicians.judge(item, "Verify no adverse drug interactions or patient drug allergies");
+    }
+
+    pharmacy_status = DiagnosticLab.try("Dispense approved medication package from pharmacy inventory");
+
+    HospitalTree.mark("Pharmacy", "implemented", reason="Meds dispensed safely");
+    PatientTreatmentChain.touch("MedicationDispense", effect=1.0);
+
+    if (pharmacy_status == "out_of_stock") {
+      HospitalTree.mark("Pharmacy", "failed", reason="Drug shortage");
+      flow.back_to("TreatmentPlanning");
+    }
+
+    context.update(pharmacy_status);
+  }
+
+  // ── Stage 5: Discharge Verification & Billing ───────────────────────────
+  checkpoint "DischargeAndBilling" (report: final_discharge) {
+    confirm("Chief Medical Officer: Patient stabilized. Authorize discharge and billing?", timeout=1800) -> discharge_approved;
+
+    if (discharge_approved) {
+      final_discharge = DiagnosticLab.try("Generate medical summary report, discharge instructions, and invoice");
+      HospitalTree.mark("PatientCare", "deployed", reason="Patient safely discharged");
+      PatientTreatmentChain.touch("Discharge", effect=1.0);
+    } else {
+      flow.back_to("DiagnosticExamination");
+    }
+
+    HospitalTree.audit();
+  }
+}
