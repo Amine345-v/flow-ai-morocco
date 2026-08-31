@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Briefcase, ChevronDown, Check, Sparkles, FolderGit2, Play, RefreshCw, Cpu, Shield, Activity, Layers, Database } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Briefcase, ChevronDown, Check, Sparkles, FolderGit2, Play, RefreshCw, Cpu, Shield, Activity, Layers, Database, Trash2 } from 'lucide-react';
 import { ProfessionalDomain } from '../types';
 
 export interface StudioProject {
@@ -102,6 +102,25 @@ interface ProjectSelectorProps {
   className?: string;
 }
 
+const getCustomProjects = (): StudioProject[] => {
+  try {
+    const stored = localStorage.getItem('jol_custom_projects');
+    if (!stored) return [];
+    const customList = JSON.parse(stored);
+    return customList.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      domain: p.domain || 'digital',
+      flowFile: p.flowFile || `${p.id}.flow`,
+      icon: '⚡',
+      description: p.description || `AI Synthesized Project`,
+      prompt: p.name || p.id
+    }));
+  } catch {
+    return [];
+  }
+};
+
 export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   currentProjectId = 'accountant_erp',
   onSelectProject,
@@ -110,8 +129,34 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(currentProjectId);
   const [isSwitching, setIsSwitching] = useState(false);
+  const [customProjects, setCustomProjects] = useState<StudioProject[]>(getCustomProjects);
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('jol_deleted_projects');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  const activeProject = ALL_STUDIO_PROJECTS.find(p => p.id === selectedId) || ALL_STUDIO_PROJECTS[0];
+  useEffect(() => {
+    const handleUpdate = () => {
+      setCustomProjects(getCustomProjects());
+    };
+    window.addEventListener('jol_project_changed', handleUpdate);
+    window.addEventListener('jol_projects_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('jol_project_changed', handleUpdate);
+      window.removeEventListener('jol_projects_updated', handleUpdate);
+    };
+  }, []);
+
+  const allMap = new Map<string, StudioProject>();
+  ALL_STUDIO_PROJECTS.forEach(p => allMap.set(p.id, p));
+  customProjects.forEach(p => allMap.set(p.id, p));
+  const combinedProjects = Array.from(allMap.values());
+  const availableProjects = combinedProjects.filter(p => !deletedIds.includes(p.id));
+  const activeProject = availableProjects.find(p => p.id === selectedId) || availableProjects[0] || ALL_STUDIO_PROJECTS[0];
 
   const handleSelect = async (project: StudioProject) => {
     setSelectedId(project.id);
@@ -121,6 +166,30 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       await onSelectProject(project);
     } finally {
       setIsSwitching(false);
+    }
+  };
+
+  const handleDelete = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (availableProjects.length <= 1) {
+      alert("Cannot delete the last remaining project in workspace.");
+      return;
+    }
+    if (!window.confirm("Do you want to delete this project from the workspace?")) return;
+
+    const newDeleted = [...deletedIds, projectId];
+    setDeletedIds(newDeleted);
+    try {
+      localStorage.setItem('jol_deleted_projects', JSON.stringify(newDeleted));
+    } catch (err) {
+      console.error("Save deleted projects err:", err);
+    }
+
+    if (selectedId === projectId) {
+      const remaining = availableProjects.filter(p => p.id !== projectId);
+      if (remaining.length > 0) {
+        handleSelect(remaining[0]);
+      }
     }
   };
 
@@ -176,18 +245,18 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
           <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] max-w-md bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-2 shadow-2xl z-40 backdrop-blur-xl animate-fade-in max-h-96 overflow-y-auto space-y-1">
             <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
               <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
-                <FolderGit2 className="w-3.5 h-3.5" /> اختر مشروع FlowLang ({ALL_STUDIO_PROJECTS.length})
+                <FolderGit2 className="w-3.5 h-3.5" /> اختر مشروع FlowLang ({availableProjects.length})
               </span>
               <span className="text-[9px] font-mono text-slate-500">Live Project Switcher</span>
             </div>
 
-            {ALL_STUDIO_PROJECTS.map((proj) => {
+            {availableProjects.map((proj) => {
               const isSelected = proj.id === selectedId;
               return (
-                <button
+                <div
                   key={proj.id}
                   onClick={() => handleSelect(proj)}
-                  className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl text-left transition-all ${isSelected ? 'bg-cyan-500/15 border border-cyan-500/40 text-white' : 'hover:bg-slate-800/60 text-slate-300 hover:text-white border border-transparent'}`}
+                  className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl text-left transition-all cursor-pointer group/item ${isSelected ? 'bg-cyan-500/15 border border-cyan-500/40 text-white' : 'hover:bg-slate-800/60 text-slate-300 hover:text-white border border-transparent'}`}
                 >
                   <span className="text-lg mt-0.5">{proj.icon}</span>
                   <div className="flex-1 min-w-0">
@@ -195,7 +264,16 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                       <span className={`text-xs font-bold truncate ${isSelected ? 'text-cyan-300' : 'text-slate-200'}`}>
                         {proj.name}
                       </span>
-                      {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0 ml-1" />}
+                      <div className="flex items-center gap-1 shrink-0 ml-1">
+                        {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
+                        <button
+                          onClick={(e) => handleDelete(proj.id, e)}
+                          title="حذف المشروع (Delete Project)"
+                          className="p-1 rounded hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[10px] text-slate-400 line-clamp-1 leading-snug">
                       {proj.description}
@@ -207,7 +285,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                       </span>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

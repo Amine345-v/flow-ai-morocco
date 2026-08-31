@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Flow, SystemChainNode, ProcessTreeNode, CommandKind } from '../types';
 import { getStoredAIConfig } from '../components/AIModelSettingsModal';
 import { synthesizeFlowArchitectureWithAI } from '../services/geminiService';
+import { registerCoWorkProject } from '../components/ProjectRegistry';
 
 export interface SimulationState {
     flow: Flow | null;
@@ -363,6 +364,9 @@ export const useSimulation = () => {
         const files = buildSynthesizedFiles(flowFileName, cleanPrompt, domain, flowContent || undefined);
 
         // 4. Apply to state immediately
+        const cleanSlug = (cleanPrompt || flowFileName).toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 25) || 'synthesized_project';
+        registerCoWorkProject(`${cleanSlug}.flow`, domain, cleanPrompt || flowFileName);
+
         setState(prev => ({
             ...prev,
             flow,
