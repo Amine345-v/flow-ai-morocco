@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Flow, SystemChainNode, ProcessTreeNode, CommandKind } from '../types';
 import { getStoredAIConfig } from '../components/AIModelSettingsModal';
+import { synthesizeFlowArchitectureWithAI } from '../services/geminiService';
 
 export interface SimulationState {
     flow: Flow | null;
@@ -348,34 +349,11 @@ export const useSimulation = () => {
             parsed = parseFlowDSL(flowContent);
             console.log(`[FlowLang] Parsed "${flowFileName}": ${parsed.checkpoints.length} checkpoints, ${parsed.teams.length} teams, ${parsed.chainNodes.length} chain nodes`);
         } else {
-            // Generate a synthetic parsed structure from the order
-            const slug = cleanPrompt.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 30);
-            parsed = {
-                flowName: slug || 'custom_flow',
-                teams: [
-                    { name: `${domain}_architects`, kind: 'Search' },
-                    { name: 'logic_engineers', kind: 'Try' },
-                    { name: 'qa_auditors', kind: 'Judge' },
-                    { name: 'deployer', kind: 'Communicate' }
-                ],
-                checkpoints: [
-                    { id: 'cp1', name: '1. Requirement Discovery', report: `Parsed order: "${cleanPrompt}"` },
-                    { id: 'cp2', name: '2. Logic Synthesis', report: `Synthesized components for: "${cleanPrompt}"` },
-                    { id: 'cp3', name: '3. Quality Verification', report: 'Zero-warning audit passed' },
-                    { id: 'cp4', name: '4. Production Deploy', report: 'Pipeline deployed successfully' }
-                ],
-                processTree: {
-                    root: slug || 'Pipeline',
-                    branches: { [slug || 'Pipeline']: ['CoreEngine', 'LogicHandlers', 'SecurityGate', 'Exporter'] },
-                    nodes: {
-                        'CoreEngine': { priority: 'critical', status: 'implemented' },
-                        'LogicHandlers': { priority: 'high', status: 'implemented' },
-                        'SecurityGate': { priority: 'high', status: 'implemented' },
-                        'Exporter': { priority: 'medium', status: 'implemented' }
-                    }
-                },
-                chainNodes: ['Discovery', 'Synthesis', 'Verification', 'Deploy']
-            };
+            // Synthesize FlowLang architecture directly via AI Provider Engine
+            const aiArch = await synthesizeFlowArchitectureWithAI(cleanPrompt, domain);
+            flowContent = aiArch.dslContent;
+            parsed = parseFlowDSL(flowContent);
+            console.log(`[AI Provider] Synthesized FlowLang architecture for prompt "${cleanPrompt}": ${parsed.checkpoints.length} checkpoints, ${parsed.chainNodes.length} chain nodes`);
         }
 
         // 3. Build visualization state FROM the parsed flow structure

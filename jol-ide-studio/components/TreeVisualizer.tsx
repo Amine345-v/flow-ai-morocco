@@ -6,7 +6,7 @@ import {
   FolderGit2, FileCode, FileText, FileJson, Code, Eye, X, Copy, Check, Database, ExternalLink,
   Folder, FolderOpen, ChevronRight, ChevronDown, Monitor, Smartphone, Tablet, RotateCw, Play, Terminal, ArrowLeft, ArrowRight, Lock, Laptop, Layout, File
 } from 'lucide-react';
-import { analyzeProcessGap } from '../services/geminiService';
+import { analyzeProcessGap, generateExpandedModuleCode } from '../services/geminiService';
 import { CustomApp } from './apps/CustomApp';
 import ProjectSelector, { StudioProject } from './ProjectSelector';
 
@@ -579,9 +579,26 @@ const TreeVisualizer: React.FC<TreeVisualizerProps> = ({ data, onStateRefresh, o
   const [isBuildingNode, setIsBuildingNode] = useState<boolean>(false);
   const [buildLogs, setBuildLogs] = useState<string[]>([]);
   
+  // Dynamic Project Files Initializer based on tree data
+  const initialFilesAndDirs = React.useMemo(() => {
+    const dataName = (data?.name || "").toLowerCase();
+    const dataId = (data?.id || "").toLowerCase();
+    let domain = "digital";
+    if (dataId.includes("cyber") || dataName.includes("secops") || dataName.includes("zero-trust") || dataName.includes("security")) {
+      domain = "cyber";
+    } else if (dataId.includes("clinical") || dataName.includes("hipaa") || dataName.includes("bio") || dataName.includes("hospital")) {
+      domain = "clinical";
+    } else if (dataId.includes("mechanical") || dataName.includes("cad") || dataName.includes("3d") || dataName.includes("robotics")) {
+      domain = "mechanical";
+    } else if (dataId.includes("economic") || dataName.includes("erp") || dataName.includes("accountant")) {
+      domain = "economic";
+    }
+    return getProjectFilesForDomain(domain, dataName);
+  }, [data]);
+
   // Project Files & Directory State
-  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(INITIAL_PROJECT_FILES);
-  const [directoryTree, setDirectoryTree] = useState<DirectoryItem[]>(INITIAL_DIRECTORY_TREE);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(() => initialFilesAndDirs.files.length > 0 ? initialFilesAndDirs.files : INITIAL_PROJECT_FILES);
+  const [directoryTree, setDirectoryTree] = useState<DirectoryItem[]>(() => initialFilesAndDirs.dirs.length > 0 ? initialFilesAndDirs.dirs : INITIAL_DIRECTORY_TREE);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
     'd-src': true,
     'd-modules': true,
@@ -591,11 +608,12 @@ const TreeVisualizer: React.FC<TreeVisualizerProps> = ({ data, onStateRefresh, o
   });
   
   // Code Editor State
-  const [activeFileId, setActiveFileId] = useState<string>('f1');
-  const [openTabIds, setOpenTabIds] = useState<string[]>(['f1', 'f2', 'f6']);
+  const [activeFileId, setActiveFileId] = useState<string>(() => (initialFilesAndDirs.files[0]?.id || 'f1'));
+  const [openTabIds, setOpenTabIds] = useState<string[]>(() => initialFilesAndDirs.files.map(f => f.id));
   const [fileCodes, setFileCodes] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    INITIAL_PROJECT_FILES.forEach(f => { initial[f.id] = f.codeSnippet; });
+    const files = initialFilesAndDirs.files.length > 0 ? initialFilesAndDirs.files : INITIAL_PROJECT_FILES;
+    files.forEach(f => { initial[f.id] = f.codeSnippet; });
     return initial;
   });
   const [compilationLog, setCompilationLog] = useState<string>('FlowLang AST Engine Ready. Select a file to compile or edit.');
@@ -898,7 +916,8 @@ const TreeVisualizer: React.FC<TreeVisualizerProps> = ({ data, onStateRefresh, o
       // Force treeData re-render in D3
       setTreeData(prev => ({ ...prev }));
 
-      const newSnippet = `// Synthesized Microservice for ${node.name}\nexport function execute${cleanName}Module() {\n  // Autonomous MCP microservice execution\n  console.log("Executing ${node.name} module logic...");\n  return { status: "ACTIVE", node: "${node.name}" };\n}`;
+      // Synthesize AI Microservice Module Code
+      const newSnippet = await generateExpandedModuleCode(node.name);
 
       // 2. Update Project Files
       setProjectFiles(prev => {
