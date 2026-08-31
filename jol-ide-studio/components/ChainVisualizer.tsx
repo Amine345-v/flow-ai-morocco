@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { SystemChainNode, OrderType } from '../types';
 import { Link2, Zap, Activity } from 'lucide-react';
 import { analyzeSystemEcho } from '../services/geminiService';
+import ProjectSelector, { StudioProject } from './ProjectSelector';
 
 interface ChainVisualizerProps {
   chain: SystemChainNode[];
+  onExecutePrompt?: (prompt: string, domain?: string) => Promise<void>;
 }
 
-const ChainVisualizer: React.FC<ChainVisualizerProps> = ({ chain }) => {
+const ChainVisualizer: React.FC<ChainVisualizerProps> = ({ chain, onExecutePrompt }) => {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [echoes, setEchoes] = useState<Record<string, string>>({});
   const [loadingEcho, setLoadingEcho] = useState(false);
@@ -56,15 +58,26 @@ const ChainVisualizer: React.FC<ChainVisualizerProps> = ({ chain }) => {
 
   return (
     <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-purple-400 flex items-center gap-2">
-            <Link2 className="w-5 h-5" />
-             تسلسل النظام (System Sequence)
-        </h3>
-        <div className="text-xs text-slate-400 flex items-center gap-2">
-            <Activity className="w-3 h-3" />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-purple-400 flex items-center gap-2">
+              <Link2 className="w-5 h-5" />
+               تسلسل النظام (System Sequence)
+          </h3>
+          <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+            <Activity className="w-3 h-3 text-purple-400" />
             <span>اضغط على عنصر لرؤية "صدى التأثير" (Echo Effect)</span>
+          </p>
         </div>
+
+        <ProjectSelector
+          onSelectProject={async (proj: StudioProject) => {
+            if (onExecutePrompt) {
+              await onExecutePrompt(proj.prompt, proj.domain);
+            }
+          }}
+          className="w-72"
+        />
       </div>
 
       <div className="flex flex-col md:flex-row items-start justify-center gap-2 min-h-[250px] overflow-x-auto p-8">

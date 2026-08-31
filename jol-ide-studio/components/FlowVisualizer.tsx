@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Flow, Order, Checkpoint, OrderType } from '../types';
 import { Play, CheckCircle, Disc, FileText, Zap } from 'lucide-react';
 import { generateCheckpointReport } from '../services/geminiService';
+import ProjectSelector, { StudioProject } from './ProjectSelector';
 
 interface FlowVisualizerProps {
   flow: Flow;
   onUpdateFlow: (flow: Flow) => void;
+  onExecutePrompt?: (prompt: string, domain?: string) => Promise<void>;
+  onNavigateToTree?: () => void;
 }
 
-const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow }) => {
+const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow, onExecutePrompt, onNavigateToTree }) => {
   const [isRunning, setIsRunning] = useState(false);
   const [processingOrderIdx, setProcessingOrderIdx] = useState<number | null>(null);
 
@@ -16,21 +19,26 @@ const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow }) =
     if (isRunning) return;
     setIsRunning(true);
 
-    // Simulate processing flow
+    // Invoke JOLWork execution prompt if provided
+    if (onExecutePrompt) {
+      await onExecutePrompt(`Execute JOL Flow: ${flow.name}`, 'digital');
+    }
+
+    // Step through checkpoints
     for (let i = 0; i < flow.checkpoints.length; i++) {
         const updatedFlow = { ...flow, currentCheckpointIndex: i };
         onUpdateFlow(updatedFlow);
         
-        // Simulate "The Zone" - Team Processing
-        for(let j = 0; j < flow.team.length; j++) {
+        // Process Team Orders
+        for(let j = 0; j < (flow.usingTeams?.length || 1); j++) {
             setProcessingOrderIdx(j);
-            await new Promise(r => setTimeout(r, 600)); 
+            await new Promise(r => setTimeout(r, 400)); 
         }
         setProcessingOrderIdx(null);
 
         // Checkpoint Logic - Generate Brief Summary Report
         if (!flow.checkpoints[i].report) {
-            const report = await generateCheckpointReport(flow.team, flow.checkpoints[i].name);
+            const report = await generateCheckpointReport(flow.usingTeams || [], flow.checkpoints[i].name);
             const newCheckpoints = [...flow.checkpoints];
             newCheckpoints[i] = { ...newCheckpoints[i], report };
             onUpdateFlow({ ...updatedFlow, checkpoints: newCheckpoints });
@@ -61,7 +69,7 @@ const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow }) =
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h3 className="text-xl font-bold text-cyan-400 flex items-center gap-2">
               <Disc className="w-5 h-5" />
@@ -69,14 +77,24 @@ const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow }) =
           </h3>
           <p className="text-xs text-slate-400 mt-1">سياسات الدمج: <span className="text-cyan-300 font-mono">{flow.mergePolicy || 'deep_merge'}</span></p>
         </div>
-        <button
-            onClick={startFlow}
-            disabled={isRunning}
-            className={`px-5 py-2 rounded font-bold flex items-center gap-2 transition-all ${isRunning ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/20'}`}
-        >
-            <Play className="w-4 h-4" />
-            {isRunning ? 'المسير جارٍ...' : 'بدء المسير'}
-        </button>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <ProjectSelector
+            onSelectProject={async (proj: StudioProject) => {
+              if (onExecutePrompt) {
+                await onExecutePrompt(proj.prompt, proj.domain);
+              }
+            }}
+            className="w-64"
+          />
+          <button
+              onClick={startFlow}
+              disabled={isRunning}
+              className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shrink-0 ${isRunning ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/20'}`}
+          >
+              <Play className="w-4 h-4" />
+              {isRunning ? 'المسير جارٍ...' : 'بدء المسير'}
+          </button>
+        </div>
       </div>
 
       {/* The Track */}

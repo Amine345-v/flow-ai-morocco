@@ -106,16 +106,74 @@ const DEFAULT_PROJECTS: ProjectSpec[] = [
     }
 ];
 
+export const getStoredProjects = (): ProjectSpec[] => {
+    try {
+        const stored = localStorage.getItem('jol_custom_projects');
+        const customProjs: ProjectSpec[] = stored ? JSON.parse(stored) : [];
+        const mergedMap = new Map<string, ProjectSpec>();
+        
+        DEFAULT_PROJECTS.forEach(p => mergedMap.set(p.id, p));
+        customProjs.forEach(p => mergedMap.set(p.id, p));
+        
+        return Array.from(mergedMap.values());
+    } catch {
+        return DEFAULT_PROJECTS;
+    }
+};
+
+export const registerCoWorkProject = (flowFile: string, domain: string, promptText: string): ProjectSpec => {
+    const cleanId = flowFile.replace(/\.flow$/i, '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+    const storedJson = localStorage.getItem('jol_custom_projects');
+    let customProjects: ProjectSpec[] = storedJson ? JSON.parse(storedJson) : [];
+
+    let existing = customProjects.find(p => p.flowFile === flowFile || p.id === cleanId);
+    if (!existing) {
+        existing = {
+            id: cleanId,
+            name: promptText ? (promptText.length > 50 ? promptText.slice(0, 47) + '...' : promptText) : `Project (${flowFile})`,
+            domain: domain || 'digital',
+            description: `JOLWork synthesized project for '${flowFile}' within ${domain.toUpperCase()} domain.`,
+            flowFile: flowFile.endsWith('.flow') ? flowFile : `${flowFile}.flow`,
+            status: 'Active',
+            checkpointsCount: 4,
+            hasLiveApp: false
+        };
+        customProjects.unshift(existing);
+        localStorage.setItem('jol_custom_projects', JSON.stringify(customProjects));
+    } else {
+        existing.status = 'Active';
+        localStorage.setItem('jol_custom_projects', JSON.stringify(customProjects));
+    }
+
+    localStorage.setItem('jol_active_project_id', existing.id);
+    localStorage.setItem('jol_active_flow', existing.flowFile);
+    window.dispatchEvent(new Event('jol_project_changed'));
+    return existing;
+};
+
 interface ProjectRegistryProps {
     onStateRefresh?: () => void;
     onNavigateToTree?: () => void;
 }
 
 const ProjectRegistry: React.FC<ProjectRegistryProps> = ({ onStateRefresh, onNavigateToTree }) => {
-    const [projects, setProjects] = useState<ProjectSpec[]>(DEFAULT_PROJECTS);
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('accountant_erp');
+    const [projects, setProjects] = useState<ProjectSpec[]>(getStoredProjects());
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(() => localStorage.getItem('jol_active_project_id') || 'accountant_erp');
     const [isBuilding, setIsBuilding] = useState<boolean>(false);
     const [buildLog, setBuildLog] = useState<string>('Project environment initialized. Ready to execute FlowLang DSL pipeline via MCP...');
+
+    React.useEffect(() => {
+        const handleProjectChange = () => {
+            setProjects(getStoredProjects());
+            const activeId = localStorage.getItem('jol_active_project_id');
+            if (activeId) {
+                setSelectedProjectId(activeId);
+            }
+        };
+
+        window.addEventListener('jol_project_changed', handleProjectChange);
+        return () => window.removeEventListener('jol_project_changed', handleProjectChange);
+    }, []);
 
     const activeProject = projects.find(p => p.id === selectedProjectId) || projects[0];
 

@@ -175,16 +175,23 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* AI Model & Key Configuration Quick Trigger */}
+                    {/* AI Model & Status Badge Quick Trigger */}
                     <button
                         onClick={() => setIsAISettingsOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-900/60 to-cyan-900/60 hover:from-purple-800/80 hover:to-cyan-800/80 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition shadow-md"
-                        title="Configure AI Model and API Key"
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition shadow-md ${
+                            aiConfig.apiKey || aiConfig.provider === 'ollama'
+                                ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40'
+                                : 'bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border-amber-500/40'
+                        }`}
+                        title="Configure AI Engine, Key & Quota Settings"
                     >
-                        <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className={`w-2 h-2 rounded-full ${aiConfig.apiKey || aiConfig.provider === 'ollama' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                        <Cpu className="w-3.5 h-3.5" />
                         <span className="font-mono">{aiConfig.model}</span>
-                        <Key className="w-3 h-3 text-amber-400" />
-                        <Settings className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/40 text-slate-300">
+                            {aiConfig.apiKey || aiConfig.provider === 'ollama' ? 'API Ready' : 'Fallback Engine (AST)'}
+                        </span>
+                        <Settings className="w-3.5 h-3.5 opacity-70 hover:opacity-100" />
                     </button>
                 </div>
 
@@ -197,7 +204,7 @@ const App: React.FC = () => {
                     )}
                     {activeTab === 'cowork' && (
                         <div className="h-full animate-fade-in">
-                            <CoWorkAgentPanel activeDomain={activeDomain} onStateRefresh={sim.refreshState} onNavigateToTree={() => setActiveTab('tree')} />
+                            <CoWorkAgentPanel activeDomain={activeDomain} onStateRefresh={sim.refreshState} onNavigateToTree={() => setActiveTab('tree')} onExecutePrompt={sim.executeFlowPrompt} />
                         </div>
                     )}
                     {activeTab === 'dashboard' && (
@@ -207,22 +214,27 @@ const App: React.FC = () => {
                     )}
                     {activeTab === 'flow' && (
                         <div className="h-full overflow-auto animate-fade-in">
-                            <FlowVisualizer flow={sim.flow || INITIAL_FLOW} onUpdateFlow={() => { }} />
+                            <FlowVisualizer
+                                flow={sim.flow || INITIAL_FLOW}
+                                onUpdateFlow={() => { }}
+                                onExecutePrompt={sim.executeFlowPrompt}
+                                onNavigateToTree={() => setActiveTab('tree')}
+                            />
                         </div>
                     )}
                     {activeTab === 'chain' && (
                         <div className="h-full overflow-auto animate-fade-in shadow-inner bg-black/10 rounded-xl p-4">
-                            <ChainVisualizer chain={sim.chain} />
+                            <ChainVisualizer chain={sim.chain} onExecutePrompt={sim.executeFlowPrompt} />
                         </div>
                     )}
                     {activeTab === 'tree' && (
                         <div className="h-full overflow-auto animate-fade-in">
-                            <TreeVisualizer data={sim.tree || INITIAL_TREE} onStateRefresh={sim.refreshState} />
+                            <TreeVisualizer data={sim.tree || INITIAL_TREE} onStateRefresh={sim.refreshState} onExecutePrompt={sim.executeFlowPrompt} />
                         </div>
                     )}
                     {activeTab === 'code' && (
                         <div className="h-full animate-fade-in">
-                            <CodeEditor />
+                            <CodeEditor files={sim.files} activeFlowName={sim.flow?.name} />
                         </div>
                     )}
                     {activeTab === 'resources' && (

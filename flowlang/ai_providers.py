@@ -217,7 +217,7 @@ class OpenAIProvider(AIProvider):
         self.client = _OpenAIClient()
 
     def execute(self, team: str, verb: str, args: List[Any], kwargs: Dict[str, Any]) -> TypedValue:
-        self.ai_default_model = os.getenv("FLOWLANG_AI_MODEL", "gpt-4o")
+        self.ai_default_model = os.getenv("FLOWLANG_AI_MODEL", "gpt-5.5")
         model = (
             os.getenv(f"FLOWLANG_AI_MODEL_{verb.upper()}")
             or self.ai_default_model
@@ -314,7 +314,7 @@ class AnthropicProvider(AIProvider):
         model = (
             os.getenv(f"FLOWLANG_ANTHROPIC_MODEL_{verb.upper()}")
             or os.getenv("FLOWLANG_ANTHROPIC_MODEL")
-            or "claude-sonnet-5"
+            or "claude-opus-5"
         )
         user_payload = _build_user_payload(team, verb, args, kwargs)
         timeout_s = _get_timeout_s(kwargs, 60)
@@ -373,7 +373,7 @@ class GeminiProvider(AIProvider):
         model_name = (
             os.getenv(f"FLOWLANG_GEMINI_MODEL_{verb.upper()}")
             or os.getenv("FLOWLANG_GEMINI_MODEL")
-            or "gemini-3-flash"
+            or "gemini-3.7-flash"
         )
         user_payload = _build_user_payload(team, verb, args, kwargs)
         timeout_s = _get_timeout_s(kwargs, 60)
@@ -593,7 +593,7 @@ class OllamaProvider(AIProvider):
         model = (
             os.getenv(f"FLOWLANG_OLLAMA_MODEL_{verb.upper()}")
             or os.getenv("FLOWLANG_OLLAMA_MODEL")
-            or "llama3.3"
+            or "qwen3-coder:30b"
         )
         user_payload = _build_user_payload(team, verb, args, kwargs)
         url = f"{self.base}/api/chat"

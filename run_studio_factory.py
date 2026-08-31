@@ -491,11 +491,12 @@ class StudioFactoryRunner:
 
         # Save to all possible IDE public state paths
         target_paths = [
-            IDE_STATE_PATH,
+            Path(workspace_root) / "jol-ide-studio" / "public" / "ide_state.json",
             Path(workspace_root) / "jol-ide" / "public" / "ide_state.json",
+            Path(workspace_root) / "flowlang" / "jol-ide-studio" / "public" / "ide_state.json",
             Path(workspace_root) / "flowlang" / "jol-ide" / "public" / "ide_state.json",
-            Path(os.path.dirname(__file__)) / ".." / "jol-ide" / "public" / "ide_state.json",
-            Path(os.path.dirname(__file__)) / "jol-ide" / "public" / "ide_state.json"
+            Path(os.path.dirname(__file__)) / "jol-ide-studio" / "public" / "ide_state.json",
+            Path(os.path.dirname(__file__)) / ".." / "jol-ide-studio" / "public" / "ide_state.json"
         ]
 
         for p in target_paths:
