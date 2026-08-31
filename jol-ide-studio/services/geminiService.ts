@@ -1,17 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 import { Order, OrderType } from "../types";
+import { getStoredAIConfig } from "../components/AIModelSettingsModal";
 
 const getAIClient = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found");
+  const config = getStoredAIConfig();
+  const apiKey = config.apiKey || process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key not found. Please configure your AI Key in Settings.");
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return { ai: new GoogleGenAI({ apiKey }), config };
 };
 
 // Logic for "Monolith" (Self-Dialogue)
 export const generateMonolithDialogue = async (order: Order): Promise<{ question: string; answer: string }[]> => {
   try {
-    const ai = getAIClient();
+    const { ai, config } = getAIClient();
     const prompt = `
       You are the "Monolith" module of the Job-Oriented Language (JOL).
       The user has issued a 'COMMUNICATE' command.
@@ -28,7 +31,7 @@ export const generateMonolithDialogue = async (order: Order): Promise<{ question
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: config.model || 'gemini-3.5-pro',
       contents: prompt,
       config: {
         responseMimeType: 'application/json'
@@ -46,7 +49,7 @@ export const generateMonolithDialogue = async (order: Order): Promise<{ question
 // Logic for Checkpoint Reporting (The Contextual Summary)
 export const generateCheckpointReport = async (orders: Order[], checkpointName: string): Promise<string> => {
   try {
-    const ai = getAIClient();
+    const { ai, config } = getAIClient();
     const ordersText = orders.map(o => `[${o.type}] ${o.content}`).join('\n');
     
     const prompt = `
@@ -63,7 +66,7 @@ export const generateCheckpointReport = async (orders: Order[], checkpointName: 
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: config.model || 'gemini-3.5-pro',
       contents: prompt,
     });
 
@@ -77,7 +80,7 @@ export const generateCheckpointReport = async (orders: Order[], checkpointName: 
 // Logic for System Sequence Echo (Resonance)
 export const analyzeSystemEcho = async (orderContent: string, orderType: string): Promise<string> => {
   try {
-    const ai = getAIClient();
+    const { ai, config } = getAIClient();
     const prompt = `
       You are the "Causal Logic" of a JOL system.
       A modification/event occurred in the command: [${orderType}] "${orderContent}".
@@ -89,7 +92,7 @@ export const analyzeSystemEcho = async (orderContent: string, orderType: string)
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: config.model || 'gemini-3.5-pro',
       contents: prompt,
     });
 
@@ -102,7 +105,7 @@ export const analyzeSystemEcho = async (orderContent: string, orderType: string)
 // Logic for Process Tree Analysis
 export const analyzeProcessGap = async (nodeName: string): Promise<string> => {
    try {
-    const ai = getAIClient();
+    const { ai, config } = getAIClient();
     const prompt = `
       Analyze the process node: "${nodeName}" within a Job-Oriented Language process tree.
       Suggest one "Gap" or "Missing Link" or suggest if this branch should be "Pruned" or "Expanded".
@@ -110,7 +113,7 @@ export const analyzeProcessGap = async (nodeName: string): Promise<string> => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: config.model || 'gemini-3.5-pro',
       contents: prompt,
     });
 

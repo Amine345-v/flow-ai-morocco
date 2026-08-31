@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Play, CheckCircle2, RefreshCw, Terminal, Layers, Shield, Cpu, Activity, BarChart3, Briefcase, ArrowRight, Bot, Code } from 'lucide-react';
+import { Sparkles, Play, CheckCircle2, RefreshCw, Terminal, Layers, Shield, Cpu, Activity, BarChart3, Briefcase, ArrowRight, Bot, Code, Key, Settings } from 'lucide-react';
 import { ProfessionalDomain } from '../types';
+import AIModelSettingsModal, { getStoredAIConfig, AIModelConfig } from './AIModelSettingsModal';
 
 interface CoWorkAgentPanelProps {
     activeDomain: ProfessionalDomain;
@@ -103,6 +104,8 @@ const CoWorkAgentPanel: React.FC<CoWorkAgentPanelProps> = ({ activeDomain, onSta
     const [steps, setSteps] = useState<CoWorkStep[]>(presetInfo.defaultSteps);
     const [isExecuting, setIsExecuting] = useState<boolean>(false);
     const [agentStream, setAgentStream] = useState<string[]>([]);
+    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+    const [aiConfig, setAiConfig] = useState<AIModelConfig>(getStoredAIConfig());
 
     const handleSelectPreset = (promptText: string) => {
         setUserPrompt(promptText);
@@ -112,14 +115,14 @@ const CoWorkAgentPanel: React.FC<CoWorkAgentPanelProps> = ({ activeDomain, onSta
 
     const handleRunAgent = async () => {
         setIsExecuting(true);
-        setAgentStream([`[CoWork Agent] Dispatching real AI task for domain '${activeDomain.toUpperCase()}' to Gemini 3.6 Flash & MCP Gateway...`]);
+        setAgentStream([`[CoWork Agent] Dispatching real AI task for domain '${activeDomain.toUpperCase()}' using model '${aiConfig.model}' over MCP Gateway...`]);
         setSteps(prev => prev.map(s => ({ ...s, status: 'running', output: undefined })));
 
         try {
             const resp = await fetch('http://localhost:8088/cowork', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ domain: activeDomain, prompt: userPrompt })
+                body: JSON.stringify({ domain: activeDomain, prompt: userPrompt, model: aiConfig.model, apiKey: aiConfig.apiKey })
             });
 
             if (resp.ok) {
@@ -132,7 +135,7 @@ const CoWorkAgentPanel: React.FC<CoWorkAgentPanelProps> = ({ activeDomain, onSta
                 setAgentStream(prev => [
                     ...prev,
                     ...logs,
-                    `[CoWork Agent] Task successfully executed over Gemini AI & MCP gateway!`
+                    `[CoWork Agent] Task successfully executed over ${aiConfig.provider.toUpperCase()} (${aiConfig.model}) & MCP gateway!`
                 ]);
 
                 setSteps(prev => prev.map((s, i) => ({
@@ -185,6 +188,17 @@ const CoWorkAgentPanel: React.FC<CoWorkAgentPanelProps> = ({ activeDomain, onSta
                         </p>
                     </div>
                 </div>
+
+                {/* AI Model & Key Config Trigger */}
+                <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition"
+                >
+                    <Cpu className="w-4 h-4 text-cyan-400" />
+                    <span className="font-mono">{aiConfig.model}</span>
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    <Settings className="w-3.5 h-3.5 text-slate-400" />
+                </button>
             </div>
 
             {/* Quick Task Presets */}
@@ -285,6 +299,13 @@ const CoWorkAgentPanel: React.FC<CoWorkAgentPanelProps> = ({ activeDomain, onSta
                 </div>
 
             </div>
+
+            {/* AI Model & API Key Configuration Modal */}
+            <AIModelSettingsModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onConfigSaved={(cfg) => setAiConfig(cfg)}
+            />
         </div>
     );
 };

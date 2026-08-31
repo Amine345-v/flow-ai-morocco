@@ -11,9 +11,10 @@ import DomainSoftwareConnector from './components/DomainSoftwareConnector';
 import CoWorkAgentPanel from './components/CoWorkAgentPanel';
 import DomainDashboard from './components/DomainDashboard';
 import ProjectRegistry from './components/ProjectRegistry';
+import AIModelSettingsModal, { getStoredAIConfig, AIModelConfig } from './components/AIModelSettingsModal';
 import { useSimulation } from './hooks/useSimulation';
 import { Flow, Order, SystemChainNode, ProcessTreeNode, ProfessionalDomain } from './types';
-import { Activity, GitBranch, Layers, FileCode, Hexagon, Cpu, ShieldCheck, Database, Server, Zap, Sparkles, LayoutDashboard, Briefcase, FolderGit2 } from 'lucide-react';
+import { Activity, GitBranch, Layers, FileCode, Hexagon, Cpu, ShieldCheck, Database, Server, Zap, Sparkles, LayoutDashboard, Briefcase, FolderGit2, Key, Settings } from 'lucide-react';
 
 // Initial Fallback Flow
 const INITIAL_FLOW: Flow = {
@@ -41,6 +42,8 @@ const INITIAL_TREE: ProcessTreeNode = {
 const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'cowork' | 'dashboard' | 'flow' | 'chain' | 'tree' | 'code' | 'resources' | 'projects' | 'mcp'>('projects');
     const [activeDomain, setActiveDomain] = useState<ProfessionalDomain>('digital');
+    const [isAISettingsOpen, setIsAISettingsOpen] = useState<boolean>(false);
+    const [aiConfig, setAiConfig] = useState<AIModelConfig>(getStoredAIConfig());
     const sim = useSimulation();
 
     const handleAddOrder = (order: Order) => {
@@ -105,69 +108,83 @@ const App: React.FC = () => {
                 <DomainSoftwareConnector activeDomain={activeDomain} />
 
                 {/* Navigation: Tab Controller */}
-                <div className="flex flex-wrap gap-2 mb-2 border-b border-slate-800 pb-2 relative z-10">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 border-b border-slate-800 pb-2 relative z-10">
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => setActiveTab('cowork')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'cowork' ? 'bg-purple-900/40 text-purple-300 border-b-2 border-purple-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                            <span>CoWork Agent (AI Team)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('dashboard')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'dashboard' ? 'bg-slate-800/80 text-cyan-400 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <LayoutDashboard className="w-4 h-4" />
+                            <span>لوحة التحكم (Dashboard)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('flow')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'flow' ? 'bg-slate-800/80 text-cyan-400 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <Activity className="w-4 h-4" />
+                            <span>المسير (Flow)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('chain')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'chain' ? 'bg-slate-800/80 text-purple-400 border-b-2 border-purple-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <Layers className="w-4 h-4" />
+                            <span>السلسلة (Chain)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('tree')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'tree' ? 'bg-slate-800/80 text-green-400 border-b-2 border-green-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <GitBranch className="w-4 h-4" />
+                            <span>الشجرة (Maestro)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('code')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'code' ? 'bg-slate-800/80 text-orange-400 border-b-2 border-orange-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <FileCode className="w-4 h-4" />
+                            <span>البرمجة (Code)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('resources')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'resources' ? 'bg-slate-800/80 text-yellow-400 border-b-2 border-yellow-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <Database className="w-4 h-4" />
+                            <span>الموارد (Domain)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('projects')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'projects' ? 'bg-cyan-900/40 text-cyan-300 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <FolderGit2 className="w-4 h-4 text-cyan-400" />
+                            <span>المشاريع (Projects)</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('mcp')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'mcp' ? 'bg-slate-800/80 text-pink-400 border-b-2 border-pink-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        >
+                            <Server className="w-4 h-4 text-pink-400 animate-pulse" />
+                            <span>MCP Studio</span>
+                        </button>
+                    </div>
+
+                    {/* AI Model & Key Configuration Quick Trigger */}
                     <button
-                        onClick={() => setActiveTab('cowork')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'cowork' ? 'bg-purple-900/40 text-purple-300 border-b-2 border-purple-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
+                        onClick={() => setIsAISettingsOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-900/60 to-cyan-900/60 hover:from-purple-800/80 hover:to-cyan-800/80 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition shadow-md"
+                        title="Configure AI Model and API Key"
                     >
-                        <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                        <span>CoWork Agent (AI Team)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('dashboard')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'dashboard' ? 'bg-slate-800/80 text-cyan-400 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <LayoutDashboard className="w-4 h-4" />
-                        <span>لوحة التحكم (Dashboard)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('flow')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'flow' ? 'bg-slate-800/80 text-cyan-400 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <Activity className="w-4 h-4" />
-                        <span>المسير (Flow)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('chain')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'chain' ? 'bg-slate-800/80 text-purple-400 border-b-2 border-purple-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <Layers className="w-4 h-4" />
-                        <span>السلسلة (Chain)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('tree')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'tree' ? 'bg-slate-800/80 text-green-400 border-b-2 border-green-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <GitBranch className="w-4 h-4" />
-                        <span>الشجرة (Maestro)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('code')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'code' ? 'bg-slate-800/80 text-orange-400 border-b-2 border-orange-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <FileCode className="w-4 h-4" />
-                        <span>البرمجة (Code)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('resources')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'resources' ? 'bg-slate-800/80 text-yellow-400 border-b-2 border-yellow-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <Database className="w-4 h-4" />
-                        <span>الموارد (Domain)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('projects')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'projects' ? 'bg-cyan-900/40 text-cyan-300 border-b-2 border-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <FolderGit2 className="w-4 h-4 text-cyan-400" />
-                        <span>المشاريع (Projects)</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('mcp')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all text-xs font-bold ${activeTab === 'mcp' ? 'bg-slate-800/80 text-pink-400 border-b-2 border-pink-400 shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'}`}
-                    >
-                        <Server className="w-4 h-4 text-pink-400 animate-pulse" />
-                        <span>MCP Studio</span>
+                        <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="font-mono">{aiConfig.model}</span>
+                        <Key className="w-3 h-3 text-amber-400" />
+                        <Settings className="w-3.5 h-3.5 text-slate-400" />
                     </button>
                 </div>
 
@@ -237,6 +254,13 @@ const App: React.FC = () => {
                         <span>GOVERNANCE ACTIVE</span>
                     </div>
                 </div>
+
+                {/* AI Model & API Key Configuration Modal */}
+                <AIModelSettingsModal
+                    isOpen={isAISettingsOpen}
+                    onClose={() => setIsAISettingsOpen(false)}
+                    onConfigSaved={(cfg) => setAiConfig(cfg)}
+                />
             </main>
         </div>
     );
