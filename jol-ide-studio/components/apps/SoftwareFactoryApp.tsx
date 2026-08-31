@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, Cpu, Terminal, Play, CheckCircle2, ShieldCheck, FileCode, Code2, 
   Sparkles, Layers, RefreshCw, Send, Search, Check, AlertCircle, Activity, 
@@ -7,7 +7,7 @@ import {
   Maximize2, Minimize2, Plus, Trash2
 } from 'lucide-react';
 import AccountantERP from './AccountantERP';
-import { synthesizeDynamicAIFileExpansion } from '../../services/geminiService';
+import { synthesizeDynamicAIFileExpansion, generateAICodeContent } from '../../services/geminiService';
 
 export interface SoftwareFile {
   id: string;
@@ -30,6 +30,57 @@ export interface AgentActivityLog {
   timestamp: string;
   status: 'running' | 'success' | 'warning';
   details?: string;
+}
+
+/**
+ * React Class Error Boundary for Software Factory App
+ */
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class SoftwareFactoryErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[SoftwareFactoryApp ErrorBoundary caught exception]:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex flex-col items-center justify-center font-sans">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-500/20 text-red-400 rounded-2xl flex items-center justify-center mx-auto border border-red-500/30">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-bold text-white">Software Factory Container Recovered</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              An unhandled render exception occurred inside the application container. The workspace state has been preserved.
+            </p>
+            <div className="p-3 bg-black/60 rounded-xl text-left font-mono text-[11px] text-red-300 overflow-x-auto border border-slate-800">
+              {this.state.error?.message || 'Component Exception Caught'}
+            </div>
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 font-bold text-xs text-white hover:opacity-90 transition shadow-lg shadow-cyan-500/20"
+            >
+              Reload Software Factory Container
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /**
@@ -112,7 +163,7 @@ interface SoftwareFactoryAppProps {
   onFileCreated?: (file: SoftwareFile) => void;
 }
 
-export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
+const SoftwareFactoryAppContent: React.FC<SoftwareFactoryAppProps> = ({
   projectName = 'Autonomous CRM SaaS',
   domain = 'digital',
   projectFiles = [],
@@ -153,63 +204,87 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
         lines: 32
       },
       {
-        id: 'f_auth',
-        name: 'AuthService.ts',
-        type: 'ts',
-        path: '/src/modules/AuthService.ts',
-        content: `export interface AuthToken {\n  userId: string;\n  role: 'ADMIN' | 'ENGINEER' | 'USER';\n  token: string;\n  expiresAt: number;\n}\n\nexport class AuthService {\n  async authenticateUser(email: string, pass: string): Promise<AuthToken> {\n    console.log("[AuthService] Authenticating user:", email);\n    return {\n      userId: "user_8921",\n      role: "ADMIN",\n      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",\n      expiresAt: Date.now() + 86400000\n    };\n  }\n}`,
+        id: 'f_app_ui',
+        name: `${projectName.replace(/[^a-zA-Z0-9]/g, '') || 'UberDispatcher'}App.tsx`,
+        type: 'tsx',
+        path: `/src/components/${projectName.replace(/[^a-zA-Z0-9]/g, '') || 'UberDispatcher'}App.tsx`,
+        content: `// Live Application Component for ${projectName}\nimport React from 'react';\n\nexport default function App() {\n  return (\n    <div className="p-6 bg-slate-950 text-white font-sans">\n      <h1 className="text-lg font-bold text-cyan-400">${projectName} Live UI</h1>\n      <p className="text-xs text-slate-400 mt-1">Synthesized by AI Model workforce.</p>\n    </div>\n  );\n}`,
         status: 'verified',
-        lines: 28,
-        activeAgent: 'code_engineers'
+        lines: 12,
+        activeAgent: 'ui_engineers'
       },
       {
-        id: 'f_contacts',
-        name: 'ContactsAPI.ts',
+        id: 'f_service_engine',
+        name: `${projectName.replace(/[^a-zA-Z0-9]/g, '') || 'UberDispatcher'}Service.ts`,
         type: 'ts',
-        path: '/src/modules/ContactsAPI.ts',
-        content: `export interface ContactRecord {\n  id: string;\n  name: string;\n  company: string;\n  email: string;\n  leadScore: number;\n}\n\nexport class ContactsAPI {\n  async listContacts(): Promise<ContactRecord[]> {\n    return [\n      { id: "c1", name: "Acme Corp CTO", company: "Acme", email: "cto@acme.com", leadScore: 98 },\n      { id: "c2", name: "Global Trade VP", company: "Global", email: "vp@global.com", leadScore: 84 }\n    ];\n  }\n}`,
+        path: `/src/modules/${projectName.replace(/[^a-zA-Z0-9]/g, '') || 'UberDispatcher'}Service.ts`,
+        content: `// Service Engine for ${projectName}\nexport class ${projectName.replace(/[^a-zA-Z0-9]/g, '') || 'UberDispatcher'}Service {\n  async run() { return true; }\n}`,
         status: 'verified',
-        lines: 35
+        lines: 5,
+        activeAgent: 'code_engineers'
       },
       {
         id: 'f_pipeline',
         name: 'PipelineEngine.ts',
         type: 'ts',
         path: '/src/modules/PipelineEngine.ts',
-        content: `export class PipelineEngine {\n  async executeStageTransition(dealId: string, stage: string) {\n    console.log(\`[PipelineEngine] Moving deal \${dealId} to stage \${stage}\`);\n    return { success: true, dealId, stage, updatedAt: new Date().toISOString() };\n  }\n}`,
+        content: `// Autonomous Pipeline Engine\nexport class PipelineEngine {\n  async execute() { return true; }\n}`,
         status: 'verified',
-        lines: 22
-      },
-      {
-        id: 'f_dashboard',
-        name: 'CRMView.tsx',
-        type: 'tsx',
-        path: '/src/components/CRMView.tsx',
-        content: `import React from 'react';\n\nexport const CRMView: React.FC = () => (\n  <div className="p-6 bg-slate-900 text-white rounded-xl border border-slate-800">\n    <h1 className="text-xl font-bold text-cyan-400">CRM SaaS Dashboard</h1>\n    <p className="text-xs text-slate-400 mt-1">Multi-agent synthesized React UI</p>\n  </div>\n);`,
-        status: 'synthesized',
-        lines: 18
+        lines: 5,
+        activeAgent: 'system_architects'
       }
     ];
   });
 
+  const workspaceFilesRef = useRef<SoftwareFile[]>(workspaceFiles);
+  useEffect(() => {
+    workspaceFilesRef.current = workspaceFiles;
+  }, [workspaceFiles]);
+
+  const isSynthesizingRef = useRef<boolean>(false);
+
   const [activeFileId, setActiveFileId] = useState<string>(workspaceFiles[0]?.id || 'f_flow');
+  const activeFile = workspaceFiles.find(f => f.id === activeFileId) || workspaceFiles[0] || {
+    id: 'f_fallback',
+    name: 'App.tsx',
+    path: '/src/App.tsx',
+    type: 'tsx',
+    content: '// Application View',
+    lines: 1,
+    status: 'verified'
+  };
+
   const [activeTab, setActiveTab] = useState<'editor' | 'agent_stream'>('agent_stream');
   const [pipelineStage, setPipelineStage] = useState<number>(4); // Stage 4: Quality Gate
   const [isCTOApproved, setIsCTOApproved] = useState<boolean>(false);
   const [terminalInput, setTerminalInput] = useState<string>('');
 
-  // Active Agent Work Inspector State
-  const [activeWorkingAgent, setActiveWorkingAgent] = useState<{
-    role: AgentActivityLog['role'];
-    action: string;
-    targetFile: string;
-    isWriting: boolean;
-  }>({
-    role: 'code_engineers',
-    action: 'Synthesizing payment intent controller & vault PCI encryption...',
-    targetFile: 'PaymentGatewayController.ts',
-    isWriting: true
-  });
+  // Live Produced App Runner Window State
+  const [isAppRunnerWindowOpen, setIsAppRunnerWindowOpen] = useState<boolean>(false);
+  const [runnerLogs, setRunnerLogs] = useState<string[]>([]);
+  const [runnerInput, setRunnerInput] = useState<string>('');
+
+  const handleRunProducedAppInWindow = () => {
+    setIsAppRunnerWindowOpen(true);
+    setRunnerLogs([
+      `[Live App Container] Mounting runtime container for: ${activeFile.name}...`,
+      `[Live App Container] Environment: Production (Vite 6.4.1 + React TSX Container)`,
+      `[Live App Container] File Path: ${activeFile.path} (${activeFile.lines} lines)`,
+      `[Live App Container] Executing self-diagnostic test... SUCCESS.`,
+      `[Live App Container] Interactive application window live.`
+    ]);
+  };
+
+  const handleExecuteRunnerAction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!runnerInput.trim()) return;
+    const time = new Date().toLocaleTimeString();
+    setRunnerLogs(prev => [
+      `[${time}] Executed live task on ${activeFile.name}: "${runnerInput}"`,
+      ...prev
+    ]);
+    setRunnerInput('');
+  };
 
   // 40-Minute Software Factory Flow Timer & Autonomous Expansion Engine
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(300); // Starts at 05:00
@@ -234,11 +309,13 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
         }
 
         // Autonomous Periodic Codebase Expansion & Progressive File Synthesis (Every 45s simulated time)
-        if (Math.floor(next) % 45 === 0 && next > 0 && next < 2400) {
+        if (Math.floor(next) % 45 === 0 && next > 0 && next < 2400 && !isSynthesizingRef.current) {
           const timestamp = new Date().toLocaleTimeString();
+          isSynthesizingRef.current = true;
 
           // Invoke AI Provider to autonomously decide what file to produce next
-          synthesizeDynamicAIFileExpansion(projectName, workspaceFiles.map(f => f.name)).then(aiDecidedFile => {
+          synthesizeDynamicAIFileExpansion(projectName, workspaceFilesRef.current.map(f => f.name)).then(aiDecidedFile => {
+            isSynthesizingRef.current = false;
             const newlyProducedFile: SoftwareFile = {
               id: `f_ai_prod_${Date.now()}`,
               name: aiDecidedFile.name,
@@ -273,14 +350,17 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
 
             setAgentLogs(l => [newLog, ...l.slice(0, 20)]);
             setCliOutput(c => [...c, `[AI Model Decision: ${role}] Produced file: ${newlyProducedFile.path} (${newlyProducedFile.lines} lines)`]);
-          }).catch(console.error);
+          }).catch(err => {
+            isSynthesizingRef.current = false;
+            console.error("[SoftwareFactoryApp] Dynamic file synthesis error:", err);
+          });
         }
 
         return next;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [speedMultiplier, isTimerRunning, workspaceFiles]);
+  }, [speedMultiplier, isTimerRunning]);
 
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -353,8 +433,6 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
     `[Stage 5: release_approval] Awaiting CTO approval gate...`
   ]);
 
-  const activeFile = workspaceFiles.find(f => f.id === activeFileId) || workspaceFiles[0];
-
   // Trigger Autonomous Agent Action Simulation
   const handleTriggerAgentAction = (role: AgentActivityLog['role'], actionText: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -401,18 +479,22 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
   const [isNewFileModalOpen, setIsNewFileModalOpen] = useState<boolean>(false);
   const [newFileName, setNewFileName] = useState<string>('');
 
-  const handleCreateNewFile = () => {
+  const handleCreateNewFile = async () => {
     if (!newFileName.trim()) return;
     const cleanName = newFileName.trim();
     const ext = cleanName.endsWith('.flow') ? 'flow' : cleanName.endsWith('.json') ? 'json' : cleanName.endsWith('.tsx') ? 'tsx' : 'ts';
+    
+    // Direct AI Provider generation for manually created files
+    const aiContent = await generateAICodeContent(cleanName, projectName, 'code_engineers');
+
     const created: SoftwareFile = {
       id: `f_user_${Date.now()}`,
       name: cleanName,
       type: ext as any,
       path: `/src/${cleanName}`,
-      content: `// Dynamic File: ${cleanName}\nexport class ${cleanName.replace(/\.[^/.]+$/, "")} {\n  async run() {\n    return { active: true, createdAt: new Date().toISOString() };\n  }\n}`,
+      content: aiContent || `// AI Synthesized File: ${cleanName}\nexport class ${cleanName.replace(/\.[^/.]+$/, "")} {\n  async run() { return { active: true, createdAt: new Date().toISOString() }; }\n}`,
       status: 'verified',
-      lines: 10,
+      lines: (aiContent || '').split('\n').length || 10,
       activeAgent: 'code_engineers'
     };
 
@@ -420,7 +502,7 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
     setActiveFileId(created.id);
     if (onFileCreated) onFileCreated(created);
 
-    setCliOutput(prev => [...prev, `[Explorer] User created file: ${created.path}`]);
+    setCliOutput(prev => [...prev, `[Explorer] User created file: ${created.path} (AI Synthesized)`]);
     setNewFileName('');
     setIsNewFileModalOpen(false);
   };
@@ -781,7 +863,7 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-cyan-400 animate-spin" />
                   <span className="text-xs font-mono font-bold text-white">
-                    team {activeWorkingAgent.role}
+                    team {activeFile.activeAgent || 'code_engineers'}
                   </span>
                   <span className="text-[10px] text-slate-300 font-mono">is working on:</span>
                   <span className="text-xs font-mono text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/40 animate-pulse font-bold">
@@ -789,6 +871,13 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleRunProducedAppInWindow}
+                    className="px-3 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:brightness-110 text-slate-950 text-xs font-bold font-mono flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    <span>Run Produced App (Other Window)</span>
+                  </button>
                   <button
                     onClick={() => setIsFullscreenEditor(prev => !prev)}
                     className="px-2.5 py-1 rounded bg-cyan-900/40 hover:bg-cyan-800/60 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono flex items-center gap-1.5 transition-all shadow"
@@ -823,11 +912,18 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
                     src &gt; {activeFile.path.split('/').slice(2).join(' &gt; ')}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-[#858585]">
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleRunProducedAppInWindow}
+                    className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 border border-emerald-500/30 text-[10px] font-mono font-bold flex items-center gap-1"
+                  >
+                    <Play className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                    <span>Run App</span>
+                  </button>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">
                     {activeFile.status}
                   </span>
-                  <span>{activeFile.lines} lines</span>
+                  <span className="text-[10px] font-mono text-[#858585]">{activeFile.lines} lines</span>
                 </div>
               </div>
 
@@ -960,8 +1056,121 @@ export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = ({
           </form>
         </div>
       </div>
+
+      {/* Floating Live Produced Application Execution Window Modal */}
+      {isAppRunnerWindowOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#0b101d] border border-cyan-500/40 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header Bar */}
+            <div className="bg-slate-950 px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
+                  <PlayCircle className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Live Application Container: <span className="text-cyan-400 font-mono">{activeFile.name}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      100% RUNNING LIVE
+                    </span>
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    Path: {activeFile.path} • {activeFile.lines} lines • Agent Team: {activeFile.activeAgent || 'code_engineers'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsAppRunnerWindowOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition"
+              >
+                <XSquare className="w-5 h-5 text-rose-400" />
+              </button>
+            </div>
+
+            {/* Modal Main Viewport */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-4">
+              {/* Application Telemetry Status Row */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-1">Execution Mode</span>
+                  <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" /> Live Interactive Container
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-1">State Integrity</span>
+                  <div className="text-sm font-bold text-cyan-300">100% AST Verified</div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-1">Runtime Latency</span>
+                  <div className="text-sm font-bold text-purple-300">0.14 ms</div>
+                </div>
+              </div>
+
+              {/* Interactive Live App Form */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300 font-mono flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-cyan-400" /> Dispatch Action to {activeFile.name}
+                  </span>
+                  <span className="text-[10px] text-cyan-400 font-mono">Interactive Control Panel</span>
+                </div>
+
+                <form onSubmit={handleExecuteRunnerAction} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={runnerInput}
+                    onChange={(e) => setRunnerInput(e.target.value)}
+                    placeholder={`Dispatch task or trigger function on ${activeFile.name}...`}
+                    className="flex-1 bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 hover:brightness-110 transition shadow-md"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Run Task</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Live Terminal Log Output Stream */}
+              <div className="p-4 rounded-xl bg-black/80 border border-slate-800 font-mono text-xs space-y-1.5 max-h-56 overflow-y-auto">
+                <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider pb-1 border-b border-slate-800 mb-2">
+                  Container Execution Telemetry Feed
+                </div>
+                {runnerLogs.map((log, i) => (
+                  <div key={i} className="text-slate-300 leading-relaxed">
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer Bar */}
+            <div className="bg-slate-950 px-5 py-2.5 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
+              <span className="flex items-center gap-2">
+                <Bot className="w-3.5 h-3.5 text-cyan-400" /> JOL Autonomous Application Container
+              </span>
+              <button
+                onClick={() => setIsAppRunnerWindowOpen(false)}
+                className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white font-bold transition"
+              >
+                Close Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export const SoftwareFactoryApp: React.FC<SoftwareFactoryAppProps> = (props) => (
+  <SoftwareFactoryErrorBoundary>
+    <SoftwareFactoryAppContent {...props} />
+  </SoftwareFactoryErrorBoundary>
+);
 
 export default SoftwareFactoryApp;

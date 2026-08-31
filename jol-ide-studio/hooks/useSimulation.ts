@@ -377,16 +377,17 @@ export const useSimulation = () => {
             isSimulating: true
         }));
 
-        // 5. Also hit the MCP gateway
+        // 5. Optionally ping local MCP gateway (quiet fallback if server offline)
         try {
             const config = getStoredAIConfig();
             await fetch('http://localhost:8088/cowork', {
                 method: 'POST',
+                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain, prompt: cleanPrompt, flowFile: flowFileName, model: config.model, apiKey: config.apiKey })
-            });
+            }).catch(() => null);
         } catch (err) {
-            console.debug("MCP gateway fallback:", err);
+            // Quiet fallback for offline MCP daemon
         } finally {
             setState(prev => ({ ...prev, isSimulating: false }));
         }
