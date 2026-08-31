@@ -20,7 +20,7 @@ export interface SimulationState {
 // FlowLang DSL Parser — Extracts structure from .flow file content
 // ============================================================================
 
-interface ParsedFlow {
+export interface ParsedFlow {
     flowName: string;
     teams: { name: string; kind: string }[];
     checkpoints: { id: string; name: string; report: string }[];
@@ -28,7 +28,7 @@ interface ParsedFlow {
     chainNodes: string[];
 }
 
-function parseFlowDSL(content: string): ParsedFlow {
+export function parseFlowDSL(content: string): ParsedFlow {
     const result: ParsedFlow = {
         flowName: 'unknown',
         teams: [],

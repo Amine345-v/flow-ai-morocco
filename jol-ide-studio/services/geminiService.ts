@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import { Order, OrderType } from "../types";
 import { getStoredAIConfig } from "../components/AIModelSettingsModal";
+import { parseFlowDSL } from "../hooks/useSimulation";
 
 let geminiRateLimitUntil = 0;
 
@@ -130,78 +130,7 @@ export const callAIProvider = async (prompt: string, jsonMode: boolean = false):
   throw new Error(`AI Provider '${provider}' missing key or service unreachable`);
 };
 
-// Logic for "Monolith" (Self-Dialogue)
-export const generateMonolithDialogue = async (order: Order): Promise<{ question: string; answer: string }[]> => {
-  try {
-    const prompt = `
-      You are the "Monolith" module of the Job-Oriented Language (JOL).
-      The user has issued a 'COMMUNICATE' command.
-      Context/Task: "${order.content}"
-      
-      Perform an Internal Q&A to evaluate this task. 
-      Ask 2 critical questions to validate the professional logic of this task and provide the answers.
-      
-      Return valid JSON in this format:
-      [
-        { "question": "...", "answer": "..." },
-        { "question": "...", "answer": "..." }
-      ]
-    `;
 
-    const text = await callAIProvider(prompt, true);
-    return JSON.parse(text || "[]");
-  } catch (error) {
-    return [
-      { question: "ما هي صحة البنية التحتية للأمر؟", answer: "الأمر مطابق لمواصفات FlowLang ومستقر." },
-      { question: "كيف يؤثر هذا الأمر على الأداء؟", answer: "يتم تنفيذ المعالجة بكفاءة دون استهلاك زائد." }
-    ];
-  }
-};
-
-// Logic for Checkpoint Reporting (The Contextual Summary)
-export const generateCheckpointReport = async (orders: Order[], checkpointName: string): Promise<string> => {
-  try {
-    const ordersText = orders.map(o => `[${o.type}] ${o.content}`).join('\n');
-    
-    const prompt = `
-      You are the "Flow Logic" of a JOL system.
-      We have reached Checkpoint: "${checkpointName}".
-      
-      Accumulated Team Activity:
-      ${ordersText}
-      
-      Generate a "Brief Summary Report". 
-      In JOL, this report relieves the Agent of "Total Memory" burden.
-      Summarize the outcome concisely so the next phase can proceed with just this context.
-      Maximum 40 words. Arabic language.
-    `;
-
-    const text = await callAIProvider(prompt, false);
-    return text || "تم الوصول لنقطة التفتيش. الحالة مستقرة والمعالجة مكتملة.";
-  } catch (error) {
-    return `تم اعتماد نقطة التفتيش '${checkpointName}' بنجاح وحفظ الحالة المحلية.`;
-  }
-};
-
-// Logic for System Sequence Echo (Resonance)
-export const analyzeSystemEcho = async (orderContent: string, orderType: string): Promise<string> => {
-  try {
-    const prompt = `
-      You are the "Causal Logic" of a JOL system.
-      A modification/event occurred in the command: [${orderType}] "${orderContent}".
-      
-      Analyze the "Echo Effect" (Resonance) on the neighboring links in the system chain.
-      How does this change reverberate to previous or next steps? (e.g., if Security increases, maybe Speed decreases).
-      
-      Return a very short, abstract phrase describing the echo (max 10 words). Arabic language.
-    `;
-
-    const text = await callAIProvider(prompt, false);
-    return text || "تأثير متوازن على الأداء والأمان.";
-  } catch (error) {
-    return "تأثير صدى متوازن محلياً على السلسلة.";
-  }
-};
 
 export const analyzeProcessGap = async (nodeName: string, node?: any): Promise<string> => {
   try {
@@ -214,34 +143,10 @@ export const analyzeProcessGap = async (nodeName: string, node?: any): Promise<s
     const text = await callAIProvider(prompt, false);
     return text || `[تحليل AST]: العقدة '${nodeName}' تعمل بكفاءة عالية ومربوطة بشبكة المعالجة.`;
   } catch (error) {
-    const cleanNode = nodeName || "الموديل";
-    const nameLower = cleanNode.toLowerCase();
+    const cleanNode = nodeName || "Node";
     const code = node?.geneticCode || '00';
-    const type = node?.type || 'branch';
-
-    if (nameLower.includes("root") || type === "root") {
-      return `[هيكلية الجذر Root]: عقدة القيادة والتوجيه الأساسية للنظام (Code: ${code}). تقوم بإرسال وت توزيع الأوامر التنفيذية إلى كافة فروع الشجرة.`;
-    }
-    if (nameLower.includes("sec") || nameLower.includes("iam") || nameLower.includes("access") || nameLower.includes("mfa") || nameLower.includes("auth") || nameLower.includes("trust") || nameLower.includes("firewall")) {
-      return `[فحص الأمان Zero-Trust]: العقدة '${cleanNode}' (Code: ${code}) محصنة بسياسة Zero-Trust. يوصى بإجراء تدقيق استثنائي للهويات وتشفير KMS.`;
-    }
-    if (nameLower.includes("ledger") || nameLower.includes("account") || nameLower.includes("financial") || nameLower.includes("tax") || nameLower.includes("vat") || nameLower.includes("balance") || nameLower.includes("invoice")) {
-      return `[مطابقة القيد المزدوج GAAP]: العقدة '${cleanNode}' (Code: ${code}) تقوم بمعالجة المعاملات المالية ومطابقة أصول/التزامات دفتر الجمع العمومي.`;
-    }
-    if (nameLower.includes("test") || nameLower.includes("qa") || nameLower.includes("audit") || nameLower.includes("check") || nameLower.includes("verif")) {
-      return `[بوابة الجودة والتدقيق]: العقدة '${cleanNode}' (Code: ${code}) تمثل نقطة تفتيش جودة تلقائية لضمان سلامة الشفرة البرمجية وتكامل الاختبارات.`;
-    }
-    if (nameLower.includes("lab") || nameLower.includes("triage") || nameLower.includes("patient") || nameLower.includes("clinic") || nameLower.includes("fhir") || nameLower.includes("hipaa")) {
-      return `[البروتوكول الطبي HIPAA]: العقدة '${cleanNode}' (Code: ${code}) تخضع لمعايير تشفير PII واشتراطات التوافق الصحي FHIR R4.`;
-    }
-    if (nameLower.includes("cad") || nameLower.includes("stl") || nameLower.includes("robot") || nameLower.includes("kinematics") || nameLower.includes("mesh")) {
-      return `[المحاكاة الهندسية 3D]: العقدة '${cleanNode}' (Code: ${code}) مسؤولة عن حساب مصفوفات الحركة وتوليد المجسمات الهندسية STL.`;
-    }
-    if (nameLower.includes("engine") || nameLower.includes("core") || nameLower.includes("logic") || nameLower.includes("handler") || nameLower.includes("microservice")) {
-      return `[المحرك التنفيذي AST]: العقدة '${cleanNode}' (Code: ${code}) تشغل المنطق البرمجي الأساسي للميكروسيرفس ومربوطة بالسلسلة.`;
-    }
-
-    return `[تحليل النمط AST]: العقدة '${cleanNode}' (رمز جيني: ${code}) مصنعة بنجاح وتعمل بكفاءة ضمن المسار البرمجي المخصص.`;
+    const status = node?.status || 'healthy';
+    return `[FlowLang AST]: العقدة '${cleanNode}' (Code: ${code}, Status: ${status}) مستقرة وتعمل ضمن شجرة المعالجة.`;
   }
 };
 
@@ -342,9 +247,12 @@ export async function execute${cleanName}Module(payload?: Partial<${cleanName}Pa
  * AI Provider Pipeline for JOLWork Prompting
  * Generates custom FlowLang DSL, Process Trees, Checkpoints, and Code Architecture via AI Provider Models
  */
-export const synthesizeFlowArchitectureWithAI = async (prompt: string, domain: string = 'digital'): Promise<{
+export const synthesizeFlowArchitectureWithAI = async (
+  prompt: string, 
+  domain: string = 'digital'
+): Promise<{
   dslContent: string;
-  checkpoints: any[];
+  checkpoints: { id: string; name: string; report: string }[];
   treeNodes: string[];
   chainNodes: string[];
 }> => {
@@ -352,67 +260,33 @@ export const synthesizeFlowArchitectureWithAI = async (prompt: string, domain: s
   const lower = prompt.toLowerCase();
   const slug = lower.replace(/[^a-z0-9]+/g, '_').slice(0, 25) || 'synthesized_flow';
 
-  try {
-    const aiPrompt = `
-      You are an AI Architecture Compiler for Job-Oriented Language (JOL).
-      User Order / Prompt: "${prompt}"
-      Domain: "${domain}"
-
-      Synthesize software architecture JSON for this prompt.
-      Return JSON ONLY in this format:
-      {
-        "processNodes": ["SubModule1", "SubModule2", "SubModule3", "SubModule4"],
-        "chainNodes": ["Discovery", "Synthesis", "Verification", "Deploy"],
-        "checkpoints": [
-          { "id": "cp1", "name": "1. Requirement Discovery", "report": "Description..." },
-          { "id": "cp2", "name": "2. Architecture Synthesis", "report": "Description..." },
-          { "id": "cp3", "name": "3. Security & Quality Audit", "report": "Description..." },
-          { "id": "cp4", "name": "4. Production Live Deploy", "report": "Description..." }
-        ]
-      }
-    `;
-
-    const text = await callAIProvider(aiPrompt, true);
-    const parsed = JSON.parse(text || "{}");
-
-    const nodes = parsed.processNodes || ["AuthService", "ContactsAPI", "PipelineEngine", "BillingModule", "Dashboard", "CI_CD"];
-    const chain = parsed.chainNodes || ["Discovery", "Architecture", "Implementation", "Testing", "Staging", "Production"];
-    const cps = [
-      { id: "cp1", name: "1. Market Discovery (market_discovery)", report: "Product brief & competitor intel synthesized by product_thinker team." },
-      { id: "cp2", name: "2. System Architecture (architecture)", report: "Process tree & system design verified by system_architects & QA." },
-      { id: "cp3", name: "3. Implementation Sprint (implementation)", report: "All sub-modules implemented by code_engineers team." },
-      { id: "cp4", name: "4. Quality Gate & Scan (quality_gate)", report: "Unit tests (>80%), OWASP Top 10 security scan & P99 latency load test passed." },
-      { id: "cp5", name: "5. Release Approval Gate (release_approval)", report: "CTO review & staging deployment gate approved." },
-      { id: "cp6", name: "6. Production Release (production_release)", report: "Blue-green deployment live in production." }
-    ];
-    const config = getStoredAIConfig();
-
-    const dslContent = `// ============================================================================
-// FlowLang DSL — Software Factory Autonomous Pipeline (${config.model || 'gemini-3.7-flash'})
-// Initial Order: "${cleanOrder}"
-// Domain: ${domain.toUpperCase()}
+  // FlowLang Architecture: The task prompt is an intrinsic part of the .flow DSL!
+  // 'order' captures the prompt, team commands (ask, search, try, judge) execute the tasks,
+  // and checkpoints collect and emit execution reports natively in .flow syntax.
+  const dslContent = `// ============================================================================
+// FlowLang DSL — Autonomous Software Factory Pipeline
+// Task Order: "${cleanOrder}"
+// Domain Target: ${domain.toUpperCase()}
 // ============================================================================
 
 order initial_human_order = "${cleanOrder}";
 
-process ${slug}_roadmap "${prompt} Roadmap" {
+process ${slug}_process "${prompt} Roadmap" {
     root: "${slug}";
-    branch "${slug}" -> ${JSON.stringify(nodes.slice(0, 3))};
-    branch "Backend" -> ${JSON.stringify(nodes.slice(0, 4))};
-    branch "Frontend" -> ${JSON.stringify(nodes.slice(4))};
-
-    ${nodes.map(n => `node "${n}" { priority: "high"; status: "pending"; };`).join('\n    ')}
+    branch "${slug}" -> ["CoreServices", "DomainLogic", "UIComponents", "AuditSuite"];
+    node "CoreGateway" { priority: "critical"; status: "pending"; };
+    node "ServiceEngine" { priority: "high"; status: "pending"; };
 
     policy: {
         risk: 0.15;
         require_reason: true;
-        allowed_status: "pending,in_progress,implemented,tested,deployed,failed";
+        allowed_status: "pending,in_progress,implemented,tested,deployed";
     };
     audit: enabled;
 }
 
 chain development_pipeline {
-    nodes: ${JSON.stringify(chain)};
+    nodes: ["Discovery", "Architecture", "Implementation", "Testing", "Staging", "Production"];
     propagation: causal(decay=0.8, backprop=true, forward=true);
     labels: { owner: "engineering", order: "${cleanOrder}" };
     constraints: { require_eval: true; };
@@ -439,19 +313,17 @@ flow build_${slug}_saas(using: market_researchers, system_architects, code_engin
     }
 
     checkpoint "implementation" (report: codebase) {
-        ${nodes.map(n => `${n.toLowerCase()}_code = code_engineers.try("Implement ${n} module");`).join('\n        ')}
+        codebase = code_engineers.try("Implement domain modules for: ${cleanOrder}");
         development_pipeline.touch("Implementation", effect=0.9);
     }
 
     checkpoint "quality_gate" (report: qa_verdict) {
-        micro_checkpoint "unit_tests" (using: qa_reviewers, threshold: 0.9) {
-            test_result = qa_reviewers.judge(item, "Coverage > 80%? All edge cases handled?");
-        }
+        test_result = qa_reviewers.judge(codebase, "Coverage > 80%? All edge cases handled?");
         development_pipeline.touch("Testing", effect=0.95);
     }
 
     checkpoint "release_approval" (report: approved) {
-        confirm("CTO Review: Deploy all modules to staging?", timeout=3600) -> cto_approved;
+        confirm("CTO Review: Deploy all modules for ${cleanOrder} to staging?", timeout=3600) -> approved;
         development_pipeline.touch("Staging", effect=1.0);
     }
 
@@ -462,71 +334,12 @@ flow build_${slug}_saas(using: market_researchers, system_architects, code_engin
 }
 `;
 
-    return {
-      dslContent,
-      checkpoints: cps,
-      treeNodes: nodes,
-      chainNodes: chain
-    };
-  } catch (err) {
-    console.debug("AI Provider Prompt Synthesis fallback triggered for:", prompt);
-  }
-
-  // Dynamic Prompt Keyword AI Synthesis Fallback based on software_factory.flow
-  let nodes = ["AuthService", "ContactsAPI", "PipelineEngine", "BillingModule", "Dashboard", "CI_CD"];
-  let chain = ["Discovery", "Architecture", "Implementation", "Testing", "Staging", "Production"];
-
-  if (lower.includes("ecom") || lower.includes("erp") || lower.includes("store") || lower.includes("shop")) {
-    nodes = ["CartEngine", "InventoryService", "PaymentGateway", "ERPGeneralLedger", "OrdersDashboard", "CI_CD"];
-  } else if (lower.includes("sec") || lower.includes("audit") || lower.includes("cyber")) {
-    nodes = ["VulnerabilityScanner", "ZeroTrustIAM", "ThreatDetector", "ComplianceReporter", "SecOpsDashboard", "CI_CD"];
-  } else if (lower.includes("clinic") || lower.includes("health") || lower.includes("doctor")) {
-    nodes = ["PatientTriage", "FHIRRecordStore", "DiagnosticEngine", "HIPAAComplianceGuard", "ClinicalDashboard", "CI_CD"];
-  } else if (lower.includes("cad") || lower.includes("3d") || lower.includes("robot")) {
-    nodes = ["STLMeshGenerator", "ForwardKinematics", "LoadAnalysisEngine", "RoboticsController", "3DViewportUI", "CI_CD"];
-  }
-
-  const cps = [
-    { id: 'cp1', name: '1. Requirement Discovery', report: `Analyzed prompt: "${prompt}"` },
-    { id: 'cp2', name: '2. Architecture Synthesis', report: `Generated nodes: ${nodes.join(', ')}` },
-    { id: 'cp3', name: '3. Security & Quality Audit', report: 'Zero-warning governance passed' },
-    { id: 'cp4', name: '4. Production Live Deploy', report: 'Application live & synchronized' }
-  ];
-
-  const dslContent = `// ============================================================================
-// FlowLang DSL — JOLWork Prompt Synthesized Architecture
-// Order: "${cleanOrder}"
-// ============================================================================
-
-order initial_human_order = "${cleanOrder}";
-
-process ${slug}_process "${prompt} System Tree" {
-    root: "${slug}";
-    branch "${slug}" -> ${JSON.stringify(nodes)};
-}
-
-chain ${slug}_chain {
-    nodes: ${JSON.stringify(chain)};
-    propagation: causal(decay=0.85, forward=true);
-}
-
-team ${domain}_architects : Command<Search> [size=3];
-team logic_engineers : Command<Try> [size=4];
-
-flow ${slug}_flow(using: ${domain}_architects, logic_engineers) {
-    context retention: checkpoint;
-    merge_policy: deep_merge;
-    checkpoint "initial_order_exec" {
-        report = "Executed initial order: ${cleanOrder}";
-    }
-}
-`;
-
+  const parsed = parseFlowDSL(dslContent);
   return {
     dslContent,
-    checkpoints: cps,
-    treeNodes: nodes,
-    chainNodes: chain
+    checkpoints: parsed.checkpoints,
+    treeNodes: ["BackendCore", "Services", "UIComponents", "QualitySuite"],
+    chainNodes: parsed.chainNodes.length > 0 ? parsed.chainNodes : ["Discovery", "Architecture", "Implementation", "Testing", "Staging", "Production"]
   };
 };
 
@@ -543,71 +356,9 @@ export const extractFullDirectoryCodebaseWithAI = async (prompt: string, domain:
   const slug = cleanOrder.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 25) || 'project';
   const domainPascal = slug.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
 
-  // 1. Synthesize Main FlowLang DSL (.flow) Architecture File
-  const flowCodeSnippet = `// ============================================================================
-// FlowLang DSL — JOL Studio Autonomous Software Pipeline
-// Target Order: "${cleanOrder}"
-// Domain: ${domain.toUpperCase()}
-// ============================================================================
-
-order ${slug}_order = "${cleanOrder}";
-
-process ${slug}_process "${domainPascal} Roadmap" {
-    root: "${domainPascal}";
-    branch "${domainPascal}" -> ["${domainPascal}Core", "${domainPascal}Services", "${domainPascal}UI", "${domainPascal}Security"];
-    node "${domainPascal}Gateway" { priority: "critical"; status: "pending"; };
-    node "${domainPascal}Engine" { priority: "high"; status: "pending"; };
-
-    policy: {
-        risk: 0.10;
-        require_reason: true;
-        allowed_status: "pending,in_progress,implemented,tested,deployed";
-    };
-    audit: enabled;
-}
-
-chain ${slug}_chain {
-    nodes: ["Discovery", "Architecture", "Implementation", "Testing", "Staging", "Production"];
-    propagation: causal(decay=0.85, backprop=true, forward=true);
-    labels: { owner: "engineering", order: "${cleanOrder}" };
-    constraints: { require_eval: true; };
-}
-
-team market_researchers : Command<Search>      [size=3, distribution=round_robin];
-team system_architects  : Command<Try>         [size=2, distribution=round_robin];
-team code_engineers     : Command<Try>         [size=5, distribution=round_robin];
-team qa_reviewers       : Command<Judge>       [size=4, distribution=round_robin, policy=QualityFirst];
-team product_thinker    : Command<Communicate> [size=1];
-
-flow build_${slug}_saas(using: market_researchers, system_architects, code_engineers, qa_reviewers, product_thinker) {
-    context retention: checkpoint;
-    merge_policy: deep_merge;
-
-    checkpoint "market_discovery" (report: market_intel) {
-        reflection = product_thinker.ask("Synthesize market strategy for: ${cleanOrder}");
-    }
-
-    checkpoint "architecture" (report: system_design) {
-        system_design = system_architects.try(market_intel);
-    }
-
-    checkpoint "implementation" (report: codebase) {
-        codebase = code_engineers.try("Implement ${domainPascal} core logic & UI");
-    }
-
-    checkpoint "quality_gate" (report: qa_verdict) {
-        qa_verdict = qa_reviewers.judge(codebase, "Verify unit test coverage & security policy");
-    }
-
-    checkpoint "release_approval" (report: approved) {
-        confirm("Deploy ${domainPascal} to staging?", timeout=3600) -> approved;
-    }
-
-    checkpoint "production_release" (report: live_status) {
-        live_status = code_engineers.try("Production blue-green rollout");
-    }
-}
-`;
+  // 1. Synthesize Main FlowLang DSL (.flow) Architecture File via core FlowLang engine
+  const flowArch = await synthesizeFlowArchitectureWithAI(prompt, domain);
+  const flowCodeSnippet = flowArch.dslContent;
 
   // 2. Query AI Model for full list of companion files in the project
   const filesPrompt = `

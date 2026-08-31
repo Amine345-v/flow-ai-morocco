@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Flow, Order, Checkpoint, OrderType } from '../types';
+import React, { useState } from 'react';
+import { Flow } from '../types';
 import { Play, CheckCircle, Disc, FileText, Zap } from 'lucide-react';
-import { generateCheckpointReport } from '../services/geminiService';
 import ProjectSelector, { StudioProject } from './ProjectSelector';
 
 interface FlowVisualizerProps {
@@ -11,34 +10,30 @@ interface FlowVisualizerProps {
   onNavigateToTree?: () => void;
 }
 
-const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow, onExecutePrompt, onNavigateToTree }) => {
+const FlowVisualizer: React.FC<FlowVisualizerProps> = ({ flow, onUpdateFlow, onExecutePrompt }) => {
   const [isRunning, setIsRunning] = useState(false);
-  const [processingOrderIdx, setProcessingOrderIdx] = useState<number | null>(null);
+  const [, setProcessingOrderIdx] = useState<number | null>(null);
 
   const startFlow = async () => {
     if (isRunning) return;
     setIsRunning(true);
 
-    // Invoke JOLWork execution prompt if provided
     if (onExecutePrompt) {
       await onExecutePrompt(`Execute JOL Flow: ${flow.name}`, 'digital');
     }
 
-    // Step through checkpoints
     for (let i = 0; i < flow.checkpoints.length; i++) {
         const updatedFlow = { ...flow, currentCheckpointIndex: i };
         onUpdateFlow(updatedFlow);
         
-        // Process Team Orders
         for(let j = 0; j < (flow.usingTeams?.length || 1); j++) {
             setProcessingOrderIdx(j);
             await new Promise(r => setTimeout(r, 400)); 
         }
         setProcessingOrderIdx(null);
 
-        // Checkpoint Logic - Generate Brief Summary Report
         if (!flow.checkpoints[i].report) {
-            const report = await generateCheckpointReport(flow.usingTeams || [], flow.checkpoints[i].name);
+            const report = `تم اعتماد نقطة التفتيش '${flow.checkpoints[i].name}' بنجاح وحفظ الحالة المحلية.`;
             const newCheckpoints = [...flow.checkpoints];
             newCheckpoints[i] = { ...newCheckpoints[i], report };
             onUpdateFlow({ ...updatedFlow, checkpoints: newCheckpoints });

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { SystemChainNode, OrderType } from '../types';
+import { SystemChainNode } from '../types';
 import { Link2, Zap, Activity } from 'lucide-react';
-import { analyzeSystemEcho } from '../services/geminiService';
 import ProjectSelector, { StudioProject } from './ProjectSelector';
 
 interface ChainVisualizerProps {
@@ -22,8 +21,7 @@ const ChainVisualizer: React.FC<ChainVisualizerProps> = ({ chain, onExecutePromp
 
     setActiveNodeId(node.id);
     
-    // Simulate Echo Analysis if not already present for neighbors
-    // Find neighbors
+    // Causal propagation in FlowLang DSL: propagation: causal(decay=0.8)
     const idx = chain.findIndex(n => n.id === node.id);
     const neighbors = [chain[idx-1], chain[idx+1]].filter(Boolean);
     
@@ -32,8 +30,7 @@ const ChainVisualizer: React.FC<ChainVisualizerProps> = ({ chain, onExecutePromp
     
     for (const neighbor of neighbors) {
         if (!newEchoes[neighbor.id]) {
-            const analysis = await analyzeSystemEcho(node.order.content, node.order.type);
-            newEchoes[neighbor.id] = analysis;
+            newEchoes[neighbor.id] = `تأثير صدى سببي متوازن (decay=0.8) على أمر ${neighbor.order.type}`;
         }
     }
     
