@@ -1,0 +1,5 @@
+{
+  "name": "JOL Ide - لغة برمجة المهن",
+  "description": "A conceptual IDE for the Job-Oriented Language (JOL), visualizing Flows, System Sequences, and Process Trees powered by Gemini.",
+  "requestFramePermissions": []
+}
