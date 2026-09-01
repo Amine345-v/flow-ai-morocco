@@ -72,8 +72,12 @@ flow production_pipeline(using: my_team) {
 
 ---
 
-## ⚡️ Production Features
+## ⚡️ Production & Software Factory Features
 
+- **Autonomous Dynamic Software Factory**: Run full 1-hour autonomous software generation pipelines using `npm run test:hour` (`test_flowlang_hour_suite.ts`). The workforce dynamically plans required file manifests at each stage and synthesizes production-grade code.
+- **Native Python Core AI Provider**: Routed directly through `flowlang/ai_providers.py` utilizing the modern `google.genai` SDK with multi-model fallback sequences (`gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-flash-latest`).
+- **Automatic 429 Rate-Limit Quota Resilience**: Built-in 429 rate-limit detection that automatically parses API quota retry delays, safely pauses execution, and resumes live LLM synthesis without falling back to generic stubs.
+- **Extension-Aware High-Fidelity Synthesizer**: Domain-specific output formatting for `.sql`, `.ts`, `.tsx`, `.json`, and `.md` artifacts ensuring full type-safety and enterprise architecture compliance.
 - **AI Resilience**: Automatic retry logic with "Corrective Prompts." If an AI fails schema validation, FlowLang feeds the error back to the model for self-correction.
 - **Persistence**: Full state serialization. Flows can be paused, snapshotted to disk, and resumed (`runtime.resume(path)`) after a crash or for human approval.
 - **Human-in-the-loop**: Use `confirm("prompt")` to create human gates for high-stakes decisions.
@@ -88,13 +92,19 @@ flow production_pipeline(using: my_team) {
    pip install -r requirements.txt
    ```
 
-2. **Run an Example**:
+2. **Run Python Core Software Factory**:
    ```bash
-   python run_software_factory.py
+   python build_accountant_erp.py
    ```
 
-3. **Check the Docs**:
-   For deep dives into the conductor logic, see [docs/conductor_logic.md](docs/conductor_logic.md).
+3. **Run 1-Hour Autonomous Software Factory Test Suite**:
+   ```bash
+   cd jol-ide-studio
+   npm run test:hour
+   ```
+
+4. **Check the Docs**:
+   For deep dives into conductor logic and factory specs, see [DOCS.md](DOCS.md).
 
 ---
 
@@ -102,6 +112,8 @@ flow production_pipeline(using: my_team) {
 
 - `runtime.py`: The heart of the Conductor.
 - `types.py`: Definitions for Orders and Professional Typology.
-- `ai_providers.py`: The bridge to LLMs with "Binary Path Awareness."
+- `ai_providers.py`: The bridge to LLMs with `google.genai` support, rate-limit resilience, and "Binary Path Awareness."
 - `semantic.py`: Ensures teams act within their professional bounds.
 - `grammar.lark`: The formal definition of the FlowLang syntax.
+- `run_flowlang_ai_step.py`: Helper CLI bridge for autonomous workforce file synthesis.
+

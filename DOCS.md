@@ -197,15 +197,17 @@ $env:FLOWLANG_ANTHROPIC_MODEL_JUDGE = "claude-sonnet-5"
 - Google Gemini
 
 ```powershell
-$env:GEMINI_API_KEY = "g-..."
+$env:GEMINI_API_KEY = "AQ.Ab8RN..."
 # Global default model
-$env:FLOWLANG_GEMINI_MODEL = "gemini-3-flash"
+$env:FLOWLANG_GEMINI_MODEL = "gemini-3.7-flash"
 # Per-verb overrides
-$env:FLOWLANG_GEMINI_MODEL_ASK = "gemini-3-flash"
-$env:FLOWLANG_GEMINI_MODEL_SEARCH = "gemini-3-flash"
-$env:FLOWLANG_GEMINI_MODEL_TRY = "gemini-3-flash"
-$env:FLOWLANG_GEMINI_MODEL_JUDGE = "gemini-3-flash"
+$env:FLOWLANG_GEMINI_MODEL_ASK = "gemini-3.7-flash"
+$env:FLOWLANG_GEMINI_MODEL_SEARCH = "gemini-3.6-flash"
+$env:FLOWLANG_GEMINI_MODEL_TRY = "gemini-3.7-flash"
+$env:FLOWLANG_GEMINI_MODEL_JUDGE = "gemini-3.7-flash"
 ```
+
+*Built-in Model Fallback & Quota Resilience*: `flowlang/ai_providers.py` uses modern `google.genai` SDK and cycles through active flagship models (`gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-flash-latest`). If a 429 Rate Limit is encountered, the provider automatically parses the retry delay, sleeps for quota reset, and retries live execution.
 
 - Mistral
 
@@ -360,12 +362,30 @@ Results are returned as `TypedValue` with a `ValueTag` and `meta` fields:
 - Add more merge policies or context management strategies.
 - Extend semantic analysis for custom rules.
 
+## 11. Autonomous AI Software Factory Engine
+
+The FlowLang Software Factory Engine translates high-level enterprise orders into multi-stage software output directories.
+
+### Pipeline Stages & Dynamic Manifest Planning
+1. **Market Discovery (`product_thinker` / `ask`)**: Generates market discovery strategy briefs and feature taxonomies.
+2. **Architecture & Topology (`system_architects` / `try`)**: Generates JSON schema specifications and service topology configurations.
+3. **Core Services & Database (`code_engineers` / `try`)**: Synthesizes PostgreSQL DDL schemas (`.sql`) and TypeScript service implementations (`.ts`, `.tsx`).
+4. **Testing & Release (`qa_engineers` / `judge`)**: Generates unit test suites and deployment container manifests.
+
+### Key Engine Components
+- **`flowlang/ai_providers.py`**: Provider bridge supporting `google.genai` SDK with multi-model fallback (`gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-flash-latest`) and CP1252-safe console printing.
+- **Quota Reset Auto-Sleep**: Automatically detects HTTP 429 quota exhaustion, parses retry delay, pauses execution, and retries the request safely.
+- **`run_flowlang_ai_step.py`**: Extension-aware synthesizer mapping requested filenames (`.sql`, `.ts`, `.tsx`, `.json`, `.md`) to structured production domain implementations.
+
 ---
 
 ## File Structure
 - `flowlang/grammar.lark` – Language grammar
 - `flowlang/runtime.py` – Main runtime engine
 - `flowlang/types.py` – Type system and TypedValue
+- `flowlang/ai_providers.py` – AI Provider Bridge with `google.genai` SDK & 429 quota auto-sleep
+- `run_flowlang_ai_step.py` – High-fidelity domain artifact synthesizer
+- `jol-ide-studio/test_flowlang_hour_suite.ts` – 1-Hour Autonomous Software Factory test suite
 - `flowlang/semantic.py` – Semantic analysis
 - `flowlang/examples/example1.flow` – Example flow program
 - `flowlang/tests/` – Test suite

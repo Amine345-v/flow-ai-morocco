@@ -163,3 +163,21 @@ By wrapping probabilistic AI calls in **Checkpoints** and **Process Nodes**, Flo
 
 ### 8.3 Contextual Pruning (RAM as Reports)
 To maintain long-term stability in complex jobs, FlowLang "dumps" working memory at every checkpoint, preserving only high-fidelity reports. This prevents the accumulation of context noise that leads to AI failure in real-world scenarios.
+
+---
+
+## 9. Autonomous AI Software Factory Integration
+
+FlowLang includes a native autonomous software synthesis engine (`run_flowlang_ai_step.py` and `flowlang/ai_providers.py`) designed for long-running factory suites (`test_flowlang_hour_suite.ts`).
+
+### 9.1 Multi-Model Provider Fallback & Quota Auto-Sleep
+- **Primary SDK**: Google `google.genai` SDK (`genai.Client`).
+- **Model Fallback**: `gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-flash-latest`.
+- **429 Rate Limit Auto-Sleep**: Parses API quota error retry delays (e.g. `retry in 32s`), auto-sleeps safely without crashing, and retries the request until valid AI content is returned.
+
+### 9.2 High-Fidelity Extension Synthesizer
+- **`.ts` / `.js`**: Synthesizes enterprise TypeScript classes with `ExecutionContext` and `ExecutionResponse<T>` interfaces.
+- **`.sql`**: Synthesizes PostgreSQL DDL schemas with foreign keys, indexes, and UUID generators.
+- **`.json`**: Synthesizes Draft 2020-12 compliant JSON schemas.
+- **`.md`**: Synthesizes architecture strategy specs with metric checklists.
+

@@ -141,26 +141,28 @@ checkpoint "security_audit" (report: audit_report) {
 
 ---
 
-## 7. Running & Debugging Flows
 
-Run a flow using the Python SDK:
+## 7. Autonomous AI Software Factory Pipeline
 
-```python
-from flowlang import Runtime, FlowDebugger
+FlowLang includes a full-fledged autonomous software generation pipeline capable of synthesizing entire enterprise software projects end-to-end.
 
-# Initialize runtime
-runtime = Runtime(dry_run=True)
-runtime.load("hello_flowlang.flow")
-
-# Optional: Attach interactive debugger
-debugger = FlowDebugger(step_mode=False)
-debugger.add_breakpoint("evaluation")
-
-# Execute flow
-runtime.run_flow("hello_world")
+### Step 1: Configure Environment (.env)
+Create a `.env` file in the root directory:
+```env
+GEMINI_API_KEY=Ab8RN...
+FLOWLANG_AI_PROVIDER=gemini
+FLOWLANG_GEMINI_MODEL=gemini-3.7-flash
 ```
 
-Or run via command line:
+### Step 3: Run 1-Hour Autonomous Software Factory Test Suite
 ```bash
-python flow.py hello_flowlang.flow
+cd jol-ide-studio
+npm run test:hour
 ```
+
+The workforce will:
+1. Dynamically plan required file manifests for each stage (Market Discovery → Requirements → Core Services → DDL Schema → Deployment).
+2. Invoke Python Core Gemini AI providers with multi-model fallback (`gemini-3.7-flash` → `gemini-3.6-flash`).
+3. Handle API rate limits (429) automatically via auto-sleep quota reset.
+4. Output clean, compile-ready `.ts`, `.tsx`, `.sql`, `.json`, and `.md` source files into `flowlang_test_results/`.
+
