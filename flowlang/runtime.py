@@ -314,6 +314,50 @@ class Runtime:
 
         self._execute_flow(target_flow, resume_state=state)
 
+    def _export_ide_state(self, flow_name: str, ctx: EvalContext):
+        """Export current runtime state to ide_state.json for Jol IDE Studio live visualization."""
+        try:
+            tree_data = self.system_tree.to_dict() if self.system_tree else {}
+            state_dict = {
+                "flow": {
+                    "id": flow_name,
+                    "name": flow_name,
+                    "usingTeams": list(self.teams.keys()),
+                    "teams": self.teams,
+                    "checkpoints": [
+                        {
+                            "id": cp,
+                            "name": cp,
+                            "status": "completed" if ctx.checkpoints.index(cp) <= ctx.checkpoint_index else "pending"
+                        }
+                        for cp in ctx.checkpoints
+                    ],
+                    "currentStage": ctx.current_stage,
+                    "currentCheckpointIndex": ctx.checkpoint_index,
+                    "mergePolicy": ctx.merge_policy,
+                },
+                "chains": self.chains,
+                "processes": self.processes,
+                "system_tree": tree_data,
+                "last_structural_gap": ctx.last_structural_gap,
+                "metrics": self.metrics,
+                "lastUpdate": time.strftime("%H:%M:%S")
+            }
+
+            # Write to IDE locations if directories exist
+            target_paths = [
+                Path("jol-ide/public/ide_state.json"),
+                Path("jol-ide-studio/public/ide_state.json"),
+                Path("public/ide_state.json")
+            ]
+            for p in target_paths:
+                if p.parent.exists():
+                    p.write_text(json.dumps(state_dict, indent=2), encoding="utf-8")
+        except Exception as e:
+            # Silent fallback to avoid crashing runtime flow execution
+            pass
+
+
     # ---------- Statement execution ----------
     def _exec_block(self, stmts_iter, ctx: EvalContext):
         for node in stmts_iter:
@@ -1602,9 +1646,17 @@ class Runtime:
                     
                     if self.dry_run:
                         self.log(f"[dry_run] Skip {team}.{verb}")
-                        res_val = TypedValue(ValueTag.Unknown, meta={"text": "dry_run"})
+                        if verb == "judge":
+                            res_val = TypedValue(ValueTag.JudgeResult, meta={"score": 0.95, "confidence": 0.95, "pass": True, "raw_content": "dry_run"})
+                        elif verb == "search":
+                            res_val = TypedValue(ValueTag.SearchResult, meta={"hits": ["dry_run_hit_1"], "raw_content": "dry_run"})
+                        elif verb == "try":
+                            res_val = TypedValue(ValueTag.TryResult, meta={"output": "dry_run_output", "metrics": {"time": 0.1}, "raw_content": "dry_run"})
+                        else:
+                            res_val = TypedValue(ValueTag.CommunicateResult, meta={"text": "dry_run_response", "history": [], "raw_content": "dry_run"})
                         member_idx = self._select_team_member(team)
                     else:
+
                         if ctx.last_structural_gap:
                             kwargs["structural_gap"] = ctx.last_structural_gap
 
@@ -1653,8 +1705,16 @@ class Runtime:
         else:
             if self.dry_run:
                 self.log(f"[dry_run] Skip {team}.{verb}")
-                final_result = TypedValue(ValueTag.Unknown, meta={"text": "dry_run"})
+                if verb == "judge":
+                    final_result = TypedValue(ValueTag.JudgeResult, meta={"score": 0.95, "confidence": 0.95, "pass": True, "raw_content": "dry_run"})
+                elif verb == "search":
+                    final_result = TypedValue(ValueTag.SearchResult, meta={"hits": ["dry_run_hit_1"], "raw_content": "dry_run"})
+                elif verb == "try":
+                    final_result = TypedValue(ValueTag.TryResult, meta={"output": "dry_run_output", "metrics": {"time": 0.1}, "raw_content": "dry_run"})
+                else:
+                    final_result = TypedValue(ValueTag.CommunicateResult, meta={"text": "dry_run_response", "history": [], "raw_content": "dry_run"})
                 member_idx = self._select_team_member(team)
+
             else:
                 final_result, member_idx = self._execute_single_action(team, verb, args, kwargs, ctx)
 
@@ -2140,19 +2200,42 @@ class Runtime:
                     if isinstance(acc, Tree):
                         if acc.data == "field":
                             fld = str(acc.children[0])
-                            # تعديل: إذا كان accum من نوع TypedValue، نصل للـ meta
-                            if isinstance(accum, TypedValue):
+                            # If accum is an Order, try attributes first, then unpack payload
+                            if isinstance(accum, Order):
+                                if hasattr(accum, fld):
+                                    accum = getattr(accum, fld)
+                                elif isinstance(accum.payload, TypedValue):
+                                    accum = accum.payload.meta.get(fld) if (accum.payload.meta and fld in accum.payload.meta) else accum.payload.value
+                                elif isinstance(accum.payload, dict) and fld in accum.payload:
+                                    accum = accum.payload[fld]
+                                else:
+                                    accum = None
+
+                            elif isinstance(accum, TypedValue):
                                 if accum.meta and fld in accum.meta:
                                     accum = accum.meta[fld]
+                                elif isinstance(accum.value, dict) and fld in accum.value:
+                                    accum = accum.value[fld]
                                 else:
-                                    raise RuntimeFlowError(f"Field '{fld}' not found on TypedValue {accum}")
+                                    accum = None
                             elif isinstance(accum, dict):
-                                if fld in accum:
-                                    accum = accum[fld]
-                                else:
-                                    raise RuntimeFlowError(f"Field '{fld}' not found on object {accum}")
+                                accum = accum.get(fld)
+                            elif hasattr(accum, fld):
+                                accum = getattr(accum, fld)
                             else:
-                                raise RuntimeFlowError(f"Cannot access field '{fld}' on non-object: {accum}")
+                                accum = None
+
+                            # Dry-run fallback if field was not found or accum was None
+                            if accum is None and self.dry_run:
+                                if fld in ("pass", "success"):
+                                    accum = True
+                                elif fld in ("score", "confidence"):
+                                    accum = 0.95
+                                else:
+                                    accum = f"dry_run_{fld}"
+                            elif accum is None:
+                                raise RuntimeFlowError(f"Field '{fld}' not found on object")
+
                         elif acc.data == "call":
                             # simple call support: if callable function name present in env
                             args = []

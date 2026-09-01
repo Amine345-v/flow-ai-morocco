@@ -99,8 +99,13 @@ def _with_retries(fn, retries: int = 2, base_delay: float = 0.5):
     raise last_exc  # type: ignore
 
 
-def _system_prompt(verb: str, maestro_path: Optional[str] = None) -> str:
+def _system_prompt(verb: str, maestro_path: Optional[str] = None, structural_gap: Optional[str] = None, critical_features: Optional[List[Any]] = None) -> str:
     path_ctx = f"\n[Maestro Context: Binary Path {maestro_path}]" if maestro_path else ""
+    if structural_gap:
+        path_ctx += f"\n[REFINEMENT GOVERNANCE - STRUCTURAL GAP REPORT: {structural_gap}]"
+    if critical_features:
+        path_ctx += f"\n[COMMANDING TRACES (الأثر الأمري) MUST BE STRICTLY SATISFIED: {json.dumps(critical_features)}]"
+
     if verb == "ask":
         return (
             "You are a helpful assistant. Respond with JSON: {\n"
@@ -125,37 +130,48 @@ def _system_prompt(verb: str, maestro_path: Optional[str] = None) -> str:
 
 
 def _build_user_payload(team: str, verb: str, args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    critical_features = kwargs.get("critical_features")
+    structural_gap = kwargs.get("structural_gap")
+
     if verb == "ask":
         prompt = args[0] if args else kwargs.get("prompt", "")
         if hasattr(prompt, "payload"):
             prompt = prompt.payload
         history = kwargs.get("history", [])
-        return {
+        payload = {
             "verb": verb,
             "team": team,
             "prompt": str(prompt),
             "history": list(history) if isinstance(history, list) else [],
             "options": {k: v for k, v in kwargs.items() if k not in ("prompt", "history")},
         }
-    if verb == "search":
+    elif verb == "search":
         query = args[0] if args else kwargs.get("query", "")
         if hasattr(query, "payload"):
             query = query.payload
-        return {"verb": verb, "team": team, "query": str(query), "options": kwargs}
-    if verb == "try":
+        payload = {"verb": verb, "team": team, "query": str(query), "options": kwargs}
+    elif verb == "try":
         task = args[0] if args else kwargs.get("task", "")
         if hasattr(task, "payload"):
             task = task.payload
-        return {"verb": verb, "team": team, "task": str(task), "options": kwargs}
-    if verb == "judge":
+        payload = {"verb": verb, "team": team, "task": str(task), "options": kwargs}
+    elif verb == "judge":
         target = args[0] if args else kwargs.get("target", "")
         if hasattr(target, "payload"):
             target = target.payload
         criteria = args[1] if len(args) > 1 else kwargs.get("criteria", "score")
         if hasattr(criteria, "payload"):
             criteria = criteria.payload
-        return {"verb": verb, "team": team, "target": target, "criteria": criteria, "options": kwargs}
-    return {"verb": verb, "team": team, "args": args, "options": kwargs}
+        payload = {"verb": verb, "team": team, "target": target, "criteria": criteria, "options": kwargs}
+    else:
+        payload = {"verb": verb, "team": team, "args": args, "options": kwargs}
+
+    if critical_features:
+        payload["commanding_traces"] = critical_features
+    if structural_gap:
+        payload["structural_gap"] = structural_gap
+    return payload
+
 
 
 def _map_to_typed_value(verb: str, content: str, parsed: Optional[Dict[str, Any]], kwargs: Dict[str, Any]) -> TypedValue:
@@ -413,8 +429,14 @@ class GeminiProvider(AIProvider):
         for cur_model in target_models:
             try:
                 def _call():
-                    system = _system_prompt(verb)
+                    system = _system_prompt(
+                        verb,
+                        maestro_path=kwargs.get("maestro_path"),
+                        structural_gap=kwargs.get("structural_gap"),
+                        critical_features=kwargs.get("critical_features")
+                    )
                     prompt = f"SYSTEM:\n{system}\n\nUSER:\n{json.dumps(user_payload)}"
+
                     
                     if hasattr(self, "client") and self.client:
                         resp = self.client.models.generate_content(

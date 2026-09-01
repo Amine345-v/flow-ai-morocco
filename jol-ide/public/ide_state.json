@@ -1,51 +1,166 @@
 {
   "flow": {
-    "id": "main",
-    "name": "main",
+    "id": "build_feature",
+    "name": "build_feature",
     "usingTeams": [
-      "T"
+      "researcher",
+      "architect",
+      "dev_team",
+      "qa_engine",
+      "deployer"
     ],
     "teams": {
-      "T": {
+      "researcher": {
         "kind": "Search",
         "size": "1",
         "distribution": "round_robin",
         "role": "None",
         "policy": "None",
-        "connector_cmd": "None",
+        "connector_cmd": "node researcher.js",
+        "_idx": "2"
+      },
+      "architect": {
+        "kind": "Try",
+        "size": "1",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "node architect.js",
+        "_idx": "1"
+      },
+      "dev_team": {
+        "kind": "Try",
+        "size": "1",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "node developer.js",
+        "_idx": "1"
+      },
+      "qa_engine": {
+        "kind": "Judge",
+        "size": "1",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "node qa_engine.js",
+        "_idx": "1"
+      },
+      "deployer": {
+        "kind": "Try",
+        "size": "1",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "node deployer.js",
         "_idx": "1"
       }
     },
     "checkpoints": [
       {
-        "id": "start",
-        "name": "start",
+        "id": "market_discovery",
+        "name": "market_discovery",
+        "report": "",
+        "microCheckpoints": []
+      },
+      {
+        "id": "tech_design",
+        "name": "tech_design",
+        "report": "",
+        "microCheckpoints": []
+      },
+      {
+        "id": "impl_code",
+        "name": "impl_code",
+        "report": "",
+        "microCheckpoints": []
+      },
+      {
+        "id": "qa_gate",
+        "name": "qa_gate",
+        "report": "",
+        "microCheckpoints": []
+      },
+      {
+        "id": "release_candidate",
+        "name": "release_candidate",
         "report": "",
         "microCheckpoints": []
       }
     ],
     "currentCheckpointIndex": 0,
-    "mergePolicy": "last_wins",
-    "orders": [
+    "mergePolicy": "last_wins"
+  },
+  "chain": [
+    {
+      "id": "production_line_Implementation",
+      "name": "Implementation",
+      "order": {
+        "id": "dummy_Implementation",
+        "type": "TRY",
+        "content": "production_line: Implementation",
+        "status": "active"
+      },
+      "impactLevel": 1.0
+    },
+    {
+      "id": "production_line_Research",
+      "name": "Research",
+      "order": {
+        "id": "dummy_Research",
+        "type": "TRY",
+        "content": "production_line: Research",
+        "status": "active"
+      },
+      "impactLevel": 1.0
+    },
+    {
+      "id": "production_line_Design",
+      "name": "Design",
+      "order": {
+        "id": "dummy_Design",
+        "type": "TRY",
+        "content": "production_line: Design",
+        "status": "active"
+      },
+      "impactLevel": 1.0
+    },
+    {
+      "id": "production_line_Deploy",
+      "name": "Deploy",
+      "order": {
+        "id": "dummy_Deploy",
+        "type": "TRY",
+        "content": "production_line: Deploy",
+        "status": "active"
+      },
+      "impactLevel": 1.0
+    }
+  ],
+  "tree": {
+    "id": "\"App\"",
+    "name": "\"App\"",
+    "geneticCode": "",
+    "type": "root",
+    "status": "healthy",
+    "children": [
       {
-        "id": "order_0",
-        "type": "SEARCH",
-        "content": "TypedValue(tag=<ValueTag.Unknown: 'Unknown'>, valu...",
-        "status": "completed",
-        "result": "TypedValue(tag=<ValueTag.Unknown: 'Unknown'>, value=None, meta={'text': 'dry_run'})"
+        "id": "\"Backend\"",
+        "name": "\"Backend\"",
+        "geneticCode": "0",
+        "type": "leaf",
+        "status": "healthy"
+      },
+      {
+        "id": "\"Frontend\"",
+        "name": "\"Frontend\"",
+        "geneticCode": "1",
+        "type": "leaf",
+        "status": "healthy"
       }
     ]
   },
-  "chain": [],
-  "tree": {
-    "id": "root",
-    "name": "main",
-    "geneticCode": "0",
-    "type": "root",
-    "status": "healthy",
-    "children": []
-  },
   "files": [],
   "resources": {},
-  "lastUpdate": "13:40:05"
+  "lastUpdate": "13:48:01"
 }
