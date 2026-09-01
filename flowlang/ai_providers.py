@@ -3,18 +3,27 @@ import os
 import json
 from typing import Any, Dict, List, Optional
 
+import re
 import time
 import logging
 
-# Auto-load .env file if present
-_env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.env"))
-if os.path.exists(_env_path):
-    with open(_env_path, "r", encoding="utf-8") as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
+# Auto-load .env or .env.local file from candidate paths
+_candidate_envs = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../.env")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../.env.local")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../jol-ide-studio/.env.local")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../jol-ide-studio/.env"))
+]
+for _env_path in _candidate_envs:
+    if os.path.exists(_env_path):
+        with open(_env_path, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    if not os.environ.get(_k.strip()):
+                        os.environ[_k.strip()] = _v.strip()
 
 from .types import TypedValue, ValueTag
 
@@ -28,6 +37,11 @@ try:
     import anthropic  # type: ignore
 except Exception:  # pragma: no cover
     anthropic = None
+
+try:
+    from google import genai as google_genai  # type: ignore
+except Exception:  # pragma: no cover
+    google_genai = None
 
 try:
     import google.generativeai as genai  # type: ignore
@@ -179,26 +193,26 @@ def _map_to_typed_value(verb: str, content: str, parsed: Optional[Dict[str, Any]
     if verb == "ask":
         return TypedValue(
             tag=ValueTag.CommunicateResult,
-            meta={"text": validated.text, "history": validated.history}
+            meta={"text": validated.text, "raw_content": content, "history": validated.history}
         )
     if verb == "search":
         return TypedValue(
             tag=ValueTag.SearchResult,
-            meta={"hits": validated.hits}
+            meta={"hits": validated.hits, "raw_content": content}
         )
     if verb == "try":
         return TypedValue(
             tag=ValueTag.TryResult,
-            meta={"output": validated.output, "metrics": validated.metrics}
+            meta={"output": validated.output, "raw_content": content, "metrics": validated.metrics}
         )
     if verb == "judge":
         return TypedValue(
             tag=ValueTag.JudgeResult,
-            meta={"score": validated.score, "confidence": validated.confidence, "pass": validated.pass_result}
+            meta={"score": validated.score, "raw_content": content, "confidence": validated.confidence, "pass": validated.pass_result}
         )
     
     # Unknown verb - use TryResult as fallback
-    return TypedValue(tag=ValueTag.Unknown, meta={"text": content})
+    return TypedValue(tag=ValueTag.Unknown, meta={"text": content, "raw_content": content})
 
 
 class AIProvider:
@@ -364,10 +378,17 @@ class GeminiProvider(AIProvider):
     name = "gemini"
 
     def __init__(self) -> None:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not genai or not api_key:
-            raise ProviderError("Gemini not available")
-        genai.configure(api_key=api_key)
+        self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not self.api_key:
+            raise ProviderError("Gemini not available: missing GEMINI_API_KEY")
+        
+        if google_genai:
+            self.client = google_genai.Client(api_key=self.api_key)
+        elif genai:
+            genai.configure(api_key=self.api_key)
+            self.client = None
+        else:
+            raise ProviderError("Gemini not available: missing google-genai package")
 
     def execute(self, team: str, verb: str, args: List[Any], kwargs: Dict[str, Any]) -> TypedValue:
         model_name = (
@@ -376,30 +397,73 @@ class GeminiProvider(AIProvider):
             or "gemini-3.7-flash"
         )
         user_payload = _build_user_payload(team, verb, args, kwargs)
-        timeout_s = _get_timeout_s(kwargs, 60)
-        retries = _get_retries(kwargs, 2)
-        try:
-            def _call():
-                model = genai.GenerativeModel(model_name)
-                system = _system_prompt(verb)
-                prompt = f"SYSTEM:\n{system}\n\nUSER:\n{json.dumps(user_payload)}"
-                if kwargs.get("stream"):
-                    stream = model.generate_content(prompt, stream=True)
-                    content_buf: List[str] = []
-                    for ev in stream:
-                        try:
-                            if hasattr(ev, "text") and ev.text:
-                                content_buf.append(ev.text)
-                        except Exception:
-                            pass
-                    return "".join(content_buf)
-                else:
-                    resp = model.generate_content(prompt, request_options={"timeout": timeout_s})
-                    return resp.text or ""
+        timeout_s = _get_timeout_s(kwargs, 180)
+        retries = _get_retries(kwargs, 4)
 
-            content = _with_retries(_call, retries=retries)
-        except Exception as e:
-            return TypedValue(tag=ValueTag.Unknown, meta={"error": str(e), "provider": self.name})
+        target_models = [
+            model_name,
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest"
+        ]
+        
+        content = ""
+        last_error = None
+
+        for cur_model in target_models:
+            try:
+                def _call():
+                    system = _system_prompt(verb)
+                    prompt = f"SYSTEM:\n{system}\n\nUSER:\n{json.dumps(user_payload)}"
+                    
+                    if hasattr(self, "client") and self.client:
+                        resp = self.client.models.generate_content(
+                            model=cur_model,
+                            contents=prompt
+                        )
+                        content_text = resp.text or ""
+                        usage = getattr(resp, "usage_metadata", None)
+                        p_tok = getattr(usage, "prompt_token_count", len(prompt) // 4) if usage else len(prompt) // 4
+                        c_tok = getattr(usage, "candidates_token_count", len(content_text) // 4) if usage else len(content_text) // 4
+                        print(f"\n📊 [FLOWLANG CORE AI TELEMETRY: {cur_model.upper()}]")
+                        print(f"  ├── 📥 Input Prompt Tokens:     {p_tok}")
+                        print(f"  ├── 📤 Output Candidate Tokens: {c_tok}")
+                        print(f"  └── 📦 Total Call Tokens:        {p_tok + c_tok}")
+                        return content_text
+                    else:
+                        model = genai.GenerativeModel(cur_model)
+                        resp = model.generate_content(prompt, request_options={"timeout": timeout_s})
+                        content_text = resp.text or ""
+                        p_tok = len(prompt) // 4
+                        c_tok = len(content_text) // 4
+                        print(f"\n📊 [FLOWLANG CORE AI TELEMETRY: {cur_model.upper()}]")
+                        print(f"  ├── 📥 Input Prompt Tokens:     ~{p_tok}")
+                        print(f"  ├── 📤 Output Candidate Tokens: ~{c_tok}")
+                        print(f"  └── 📦 Total Call Tokens:        ~{p_tok + c_tok}")
+                        return content_text
+
+                content = _with_retries(_call, retries=retries, base_delay=5.0)
+                if content:
+                    break
+            except Exception as e:
+                last_error = str(e)
+                err_msg = str(e)
+                if "429" in err_msg or "Quota" in err_msg or "retry" in err_msg.lower():
+                    match = re.search(r"retry in (\d+(?:\.\d+)?)s", err_msg, re.IGNORECASE)
+                    sleep_sec = float(match.group(1)) + 5.0 if match else 35.0
+                    print(f"\n[FlowLang Gemini Provider] Rate limit 429 encountered on model '{cur_model}'. Auto-sleeping {sleep_sec:.1f}s for quota reset...")
+                    time.sleep(sleep_sec)
+                    try:
+                        content = _call()
+                        if content:
+                            break
+                    except Exception as retry_err:
+                        last_error = str(retry_err)
+                print(f"[FlowLang Model Fallback] Model '{cur_model}' hit error: {e}. Trying next model...")
+                continue
+
+        if not content and last_error:
+            return TypedValue(tag=ValueTag.Unknown, meta={"error": last_error, "provider": self.name})
         try:
             parsed = json.loads(content) if content else {}
         except Exception:

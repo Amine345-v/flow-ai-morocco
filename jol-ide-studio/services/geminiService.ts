@@ -12,7 +12,38 @@ export const callAIProvider = async (prompt: string, jsonMode: boolean = false):
   const config = getStoredAIConfig();
   const provider = config.provider || 'gemini';
   const model = config.model || 'gemini-3.7-flash';
-  const apiKey = config.apiKey || (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY || (typeof process !== 'undefined' && process.env ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : '') || '';
+  
+  let envKey = (typeof process !== 'undefined' && process.env) 
+    ? (process.env.API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.VITE_GEMINI_API_KEY || '')
+    : '';
+
+  if (!envKey && typeof process !== 'undefined') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const possibleEnvPaths = [
+        path.join(process.cwd(), '.env'),
+        path.join(process.cwd(), '../.env'),
+        'c:\\Users\\asusu\\CascadeProjects\\flowlang\\flowlang\\.env',
+        'c:\\Users\\asusu\\CascadeProjects\\flowlang\\flowlang\\jol-ide-studio\\.env'
+      ];
+      for (const p of possibleEnvPaths) {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, 'utf-8');
+          const match = raw.match(/(?:GEMINI_API_KEY|GOOGLE_API_KEY|VITE_GEMINI_API_KEY)=([^\s\r\n]+)/);
+          if (match && match[1]) {
+            envKey = match[1].trim();
+            process.env.GEMINI_API_KEY = envKey;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      // Browser environment fallback
+    }
+  }
+
+  const apiKey = config.apiKey || (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY || envKey || '';
 
   // 1. Google Gemini Provider
   if (provider === 'gemini') {
@@ -23,12 +54,29 @@ export const callAIProvider = async (prompt: string, jsonMode: boolean = false):
     if (apiKey) {
       try {
         const ai = new GoogleGenAI({ apiKey });
-        const activeModel = model === 'gemini-3.7-flash' ? 'gemini-2.5-flash' : model;
+        const activeModel = model || 'gemini-3.7-flash';
         const response = await ai.models.generateContent({
           model: activeModel,
           contents: prompt,
           config: jsonMode ? { responseMimeType: 'application/json' } : undefined
         });
+        
+        const usage = (response as any).usageMetadata || (response as any).usage;
+        const outputText = response.text || '';
+        const estOutputTokens = Math.ceil(outputText.length / 4);
+        const estPromptTokens = Math.ceil(prompt.length / 4);
+
+        const promptTokens = usage?.promptTokenCount ?? usage?.prompt_tokens ?? estPromptTokens;
+        const candidateTokens = usage?.candidatesTokenCount ?? usage?.completion_tokens ?? estOutputTokens;
+        const totalTokens = usage?.totalTokenCount ?? usage?.total_tokens ?? (promptTokens + candidateTokens);
+
+        console.log(`\n=================================================================`);
+        console.log(`📊 [AI TOKEN TELEMETRY: ${activeModel.toUpperCase()}]`);
+        console.log(`  ├── 📥 Input Prompt Tokens:  ${promptTokens}`);
+        console.log(`  ├── 📤 Output Candidate Tokens: ${candidateTokens}`);
+        console.log(`  └── 📦 Total Call Tokens:     ${totalTokens}`);
+        console.log(`=================================================================\n`);
+
         if (response.text) return response.text;
       } catch (err: any) {
         const errMsg = String(err?.message || err);
