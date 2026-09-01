@@ -1,4 +1,4 @@
-const { FlowWorker, FlowResult } = require('../../sdk/js');
+const { FlowWorker, FlowResult } = require('../../debug/run/sdk/js');
 const fs = require('fs');
 const path = require('path');
 
