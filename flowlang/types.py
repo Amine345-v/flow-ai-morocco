@@ -211,3 +211,63 @@ class Order:
             "status": "failed",
             "error": error
         })
+
+    def echo(self, feature_name: str, expected_value: Any = None) -> DriftResult:
+        """Sonar drift check (.echo): Probes recorded CriticalFeatures for drift."""
+        for feat in self.critical_features:
+            if feat.name == feature_name:
+                if expected_value is not None and feat.value != expected_value:
+                    return DriftResult(
+                        drift_detected=True,
+                        source_node=self.id,
+                        expected=expected_value,
+                        actual=feat.value,
+                        message=f"Drift detected in feature '{feature_name}': expected '{expected_value}', got '{feat.value}'"
+                    )
+                return DriftResult(
+                    drift_detected=False,
+                    source_node=self.id,
+                    expected=feat.value,
+                    actual=feat.value,
+                    message=f"Feature '{feature_name}' verified without drift."
+                )
+        return DriftResult(
+            drift_detected=True,
+            source_node=self.id,
+            expected=expected_value,
+            actual=None,
+            message=f"Feature '{feature_name}' missing in Order '{self.id}'."
+        )
+
+# ─── Jol Studio Architecture Types (.echo & SGR) ─────────────────
+@dataclass
+class DriftResult:
+    """Sonar .echo check result for drift detection."""
+    drift_detected: bool
+    source_node: str
+    expected: Any = None
+    actual: Any = None
+    message: str = ""
+
+@dataclass
+class StructuralGapReport:
+    """Structural Gap Report (SGR): Issued by Judge Engine when drift or gap is detected."""
+    ancestry_check: bool = False
+    feasibility_check: bool = False
+    tree_completion_check: bool = False
+    missing_nodes: List[str] = field(default_factory=list)
+    broken_ancestry_features: List[str] = field(default_factory=list)
+    remediation_command: Optional[str] = None
+    passed: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ancestry_check": self.ancestry_check,
+            "feasibility_check": self.feasibility_check,
+            "tree_completion_check": self.tree_completion_check,
+            "missing_nodes": self.missing_nodes,
+            "broken_ancestry_features": self.broken_ancestry_features,
+            "remediation_command": self.remediation_command,
+            "passed": self.passed,
+        }
+

@@ -164,6 +164,42 @@ class SystemTreeEngine:
         if feature_id not in self.graph.nodes:
             return []
         return list(nx.ancestors(self.graph, feature_id))
+
+    def echo_check(self, node_id: str, expected_val: Any = None) -> Any:
+        """Sonar drift check (.echo): Probes a tree node for value alignment."""
+        try:
+            from .types import DriftResult
+        except ImportError:
+            from types import DriftResult
+
+        if node_id not in self.graph.nodes:
+            return DriftResult(
+                drift_detected=True,
+                source_node=node_id,
+                expected=expected_val,
+                actual=None,
+                message=f"Node '{node_id}' missing in System Tree."
+            )
+
+        data = self.graph.nodes[node_id].get("data")
+        val = getattr(data, "value", data) if data is not None else None
+        if expected_val is not None and val != expected_val:
+            return DriftResult(
+                drift_detected=True,
+                source_node=node_id,
+                expected=expected_val,
+                actual=val,
+                message=f"Drift detected at tree node '{node_id}': expected '{expected_val}', got '{val}'"
+            )
+
+        return DriftResult(
+            drift_detected=False,
+            source_node=node_id,
+            expected=val,
+            actual=val,
+            message=f"Tree node '{node_id}' verified without drift."
+        )
+
     
     # ─── Protocols (Deep Tech) ───────────────────────────────────
     

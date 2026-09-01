@@ -1350,7 +1350,32 @@ class Runtime:
                         j -= 1
             self.log(f"[chain] {name}.propagate {node} effect={eff} with decay={decay}")
             return
+        if op == "echo":
+            node = args[0] if args else kwargs.get("node")
+            expected = args[1] if len(args) > 1 else kwargs.get("expected")
+            current_val = ch["effects"].get(str(node))
+            from .types import DriftResult
+            if current_val != expected and expected is not None:
+                res = DriftResult(
+                    drift_detected=True,
+                    source_node=f"{name}.{node}",
+                    expected=expected,
+                    actual=current_val,
+                    message=f"Drift detected at chain node '{name}.{node}': expected '{expected}', got '{current_val}'"
+                )
+            else:
+                res = DriftResult(
+                    drift_detected=False,
+                    source_node=f"{name}.{node}",
+                    expected=current_val,
+                    actual=current_val,
+                    message=f"Chain node '{name}.{node}' verified without drift."
+                )
+            ctx.variables["_"] = res
+            self.log(f"[chain.echo] {res.message}")
+            return res
         self.log(f"[chain] {name}.{op} args={args} kwargs={kwargs}")
+
 
     def _process_call(self, name: str, op: str, args: List[Any], kwargs: Dict[str, Any], ctx: EvalContext):
         pr = self.processes[name]
@@ -1406,7 +1431,34 @@ class Runtime:
             path = self._get_binary_path(name, str(target))
             self.log(f"[process] {name}.find {target} @ path={path}")
             return path
+        if op == "echo":
+            node = args[0] if args else kwargs.get("node")
+            expected = args[1] if len(args) > 1 else kwargs.get("expected")
+            current_val = pr["marks"].get(str(node))
+            from .types import DriftResult
+            if self.system_tree and self.system_tree.node_count > 0:
+                res = self.system_tree.echo_check(str(node), expected)
+            elif current_val != expected and expected is not None:
+                res = DriftResult(
+                    drift_detected=True,
+                    source_node=f"{name}.{node}",
+                    expected=expected,
+                    actual=current_val,
+                    message=f"Drift detected at process '{name}.{node}': expected '{expected}', got '{current_val}'"
+                )
+            else:
+                res = DriftResult(
+                    drift_detected=False,
+                    source_node=f"{name}.{node}",
+                    expected=current_val,
+                    actual=current_val,
+                    message=f"Process node '{name}.{node}' verified without drift."
+                )
+            ctx.variables["_"] = res
+            self.log(f"[process.echo] {res.message}")
+            return res
         self.log(f"[process] {name}.{op} args={args} kwargs={kwargs}")
+
 
     def _get_binary_path(self, pname: str, nname: str) -> str:
         """Computes bit-string path (e.g. 0101) from root to node."""
@@ -1649,12 +1701,87 @@ class Runtime:
                     if content.get("pass") is False:
                         self.log(f"[Governance] Policy '{policy_name}' REJECTED result from {team}: Hard Law Violation.")
                         # Reroute or handle failure here if needed
-        
+
+        # Triple-Check Protocol & Structural Gap Report (Module 14 of Jol Studio Course)
+        if verb == "judge":
+            result_val = self._perform_triple_check(result_val, args, kwargs, ctx)
+
         # Metrics and Logging
         self.metrics["actions"] += 1
         self.metrics["verbs"][verb] = self.metrics["verbs"].get(verb, 0) + 1
         self.log(f"[{team}#{member_idx or 0}.{verb}] -> {result_val}")
         return result_val, member_idx
+
+    def _perform_triple_check(self, result_val: Any, args: List[Any], kwargs: Dict[str, Any], ctx: EvalContext) -> Any:
+        """Module 14: Triple-Check Protocol & Structural Gap Report (SGR).
+        Checks:
+        1. Ancestry Check (فحص النسب): Genetic link back to valid parent trace.
+        2. Feasibility Check (فحص القيود): Policy/Score/Pass thresholds.
+        3. Tree Completion Check (ملأ الشجرة): Mandatory nodes filled.
+        """
+        from .types import StructuralGapReport
+
+        ancestry_ok = True
+        broken_features = []
+        missing_nodes = []
+
+        # 1. Ancestry Check
+        features = kwargs.get("critical_features", [])
+        if self.system_tree and features:
+            for f in features:
+                if isinstance(f, dict):
+                    fid = f.get("feature_id") or f.get("name")
+                    ancestry = f.get("ancestry_link")
+                    if fid and ancestry and not self.system_tree.verify_ancestry(fid, ancestry):
+                        ancestry_ok = False
+                        broken_features.append(f"{fid}->{ancestry}")
+
+        # 2. Feasibility Check
+        feasibility_ok = True
+        content = result_val.value if hasattr(result_val, "value") else result_val
+        if isinstance(content, dict):
+            if content.get("pass") is False:
+                feasibility_ok = False
+            elif content.get("score") is not None and isinstance(content.get("score"), (int, float)) and content.get("score") < 0.7:
+                feasibility_ok = False
+
+        # 3. Tree Completion Check
+        tree_completion_ok = True
+        if self.system_tree:
+            missing_nodes = self.system_tree.get_missing_mandatory()
+            if missing_nodes:
+                tree_completion_ok = False
+
+        all_passed = ancestry_ok and feasibility_ok and tree_completion_ok
+
+        sgr = StructuralGapReport(
+            ancestry_check=ancestry_ok,
+            feasibility_check=feasibility_ok,
+            tree_completion_check=tree_completion_ok,
+            missing_nodes=missing_nodes,
+            broken_ancestry_features=broken_features,
+            passed=all_passed,
+        )
+
+        if not all_passed:
+            remediation = f"Structural Gap Report: Ancestry={ancestry_ok}, Feasibility={feasibility_ok}, TreeCompletion={tree_completion_ok}."
+            if missing_nodes:
+                remediation += f" Missing mandatory nodes: {missing_nodes}."
+            if broken_features:
+                remediation += f" Broken feature ancestry: {broken_features}."
+            sgr.remediation_command = remediation
+            ctx.last_structural_gap = remediation
+            self.log(f"[judge.sgr] ⚠️ {remediation}")
+        else:
+            ctx.last_structural_gap = None
+
+        if isinstance(result_val, dict):
+            result_val["sgr"] = sgr.to_dict()
+        elif hasattr(result_val, "meta") and isinstance(result_val.meta, dict):
+            result_val.meta["sgr"] = sgr.to_dict()
+
+        return result_val
+
 
     def _dispatch_provider(self, team: str, verb: str, args: List[Any], kwargs: Dict[str, Any], member_idx: int) -> Tuple[Any, int]:
         # Formal Verification Intercept

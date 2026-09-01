@@ -1,362 +1,51 @@
 {
   "flow": {
-    "id": "accounting_erp_system",
-    "name": "Accountant ERP Enterprise System (FlowLang DSL)",
+    "id": "main",
+    "name": "main",
     "usingTeams": [
-      "financial_architects",
-      "ledger_engineers",
-      "compliance_auditors",
-      "ui_designers"
+      "T"
     ],
     "teams": {
-      "financial_architects": {
+      "T": {
         "kind": "Search",
-        "size": "3",
-        "distribution": "round_robin"
-      },
-      "ledger_engineers": {
-        "kind": "Try",
-        "size": "5",
-        "distribution": "round_robin"
-      },
-      "compliance_auditors": {
-        "kind": "Judge",
-        "size": "3",
-        "distribution": "round_robin"
-      },
-      "ui_designers": {
-        "kind": "Communicate",
-        "size": "2",
-        "distribution": "round_robin"
+        "size": "1",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "None",
+        "_idx": "1"
       }
     },
     "checkpoints": [
       {
-        "id": "cp1_coa",
-        "name": "1. Chart of Accounts & GAAP Setup",
-        "report": "Defined Assets, Liabilities, Equity, Revenue, and Expense account hierarchy",
-        "microCheckpoints": [
-          {
-            "id": "m1",
-            "description": "Verify GAAP Account Codes (1000-5000)",
-            "pass": true,
-            "weight": 1.0
-          },
-          {
-            "id": "m2",
-            "description": "Initialize General Ledger Balance Table",
-            "pass": true,
-            "weight": 1.0
-          }
-        ]
-      },
-      {
-        "id": "cp2_ledger",
-        "name": "2. Double-Entry Ledger & Invoicing Engine",
-        "report": "Synthesized double-entry transaction engine (Debits == Credits validated)",
-        "microCheckpoints": [
-          {
-            "id": "m3",
-            "description": "Validate Debit == Credit mathematical equivalence",
-            "pass": true,
-            "weight": 1.0
-          },
-          {
-            "id": "m4",
-            "description": "Synthesize VAT 20% Tax Calculation Engine",
-            "pass": true,
-            "weight": 1.0
-          }
-        ]
-      },
-      {
-        "id": "cp3_statements",
-        "name": "3. Financial Statements & Audit Engine",
-        "report": "Generated P&L, Balance Sheet, and Trial Balance reports (100% Audit Score)",
-        "microCheckpoints": [
-          {
-            "id": "m5",
-            "description": "Verify Income Statement Net Profit calculation",
-            "pass": true,
-            "weight": 1.0
-          },
-          {
-            "id": "m6",
-            "description": "Verify Balance Sheet equation (Assets = Liabilities + Equity)",
-            "pass": true,
-            "weight": 1.0
-          }
-        ]
-      },
-      {
-        "id": "cp4_app_export",
-        "name": "4. Export & Live App Deployment",
-        "report": "Successfully published Accountant ERP System to JOL Studio IDE workspace",
-        "microCheckpoints": [
-          {
-            "id": "m7",
-            "description": "Compile AccountantERP.tsx React Component",
-            "pass": true,
-            "weight": 1.0
-          }
-        ]
+        "id": "start",
+        "name": "start",
+        "report": "",
+        "microCheckpoints": []
       }
     ],
-    "currentCheckpointIndex": 3,
-    "mergePolicy": "deep_merge"
-  },
-  "chain": [
-    {
-      "id": "c1_coa_search",
-      "name": "1. SEARCH: Chart of Accounts & GAAP Architecture",
-      "order": {
-        "id": "ord_1",
+    "currentCheckpointIndex": 0,
+    "mergePolicy": "last_wins",
+    "orders": [
+      {
+        "id": "order_0",
         "type": "SEARCH",
-        "content": "Define GAAP 5-level Chart of Accounts hierarchy",
-        "status": "active"
-      },
-      "impactLevel": 1.0
-    },
-    {
-      "id": "c2_ledger_try",
-      "name": "2. TRY: Synthesize Double-Entry General Ledger",
-      "order": {
-        "id": "ord_2",
-        "type": "TRY",
-        "content": "Build double-entry journal engine (Debit = Credit)",
-        "status": "active"
-      },
-      "impactLevel": 1.0
-    },
-    {
-      "id": "c3_audit_judge",
-      "name": "3. JUDGE: Compliance & Financial Audit",
-      "order": {
-        "id": "ord_3",
-        "type": "JUDGE",
-        "content": "Audit Income Statement, Balance Sheet, and VAT Return",
-        "status": "active"
-      },
-      "impactLevel": 1.0
-    },
-    {
-      "id": "c4_export_ask",
-      "name": "4. ASK: Deploy Accountant ERP System to JOL Studio",
-      "order": {
-        "id": "ord_4",
-        "type": "ASK",
-        "content": "Export AccountantERP.tsx live web application",
-        "status": "active"
-      },
-      "impactLevel": 1.0
-    }
-  ],
-  "tree": {
-    "id": "Accountant_ERP_Enterprise_System",
-    "name": "Accountant ERP Enterprise System",
-    "geneticCode": "0",
-    "type": "root",
-    "status": "healthy",
-    "children": [
-      {
-        "id": "General_Ledger_Engine",
-        "name": "General Ledger & Double-Entry Engine",
-        "geneticCode": "00",
-        "type": "branch",
-        "status": "healthy",
-        "children": [
-          {
-            "id": "DoubleEntryValidator",
-            "name": "DoubleEntryValidator (Debits = Credits)",
-            "geneticCode": "000",
-            "type": "branch",
-            "status": "healthy",
-            "children": [
-              {
-                "id": "DoubleEntryValidator_Core_Logic",
-                "name": "DoubleEntryValidator (Debits = Credits) - Core Execution Module",
-                "geneticCode": "0000",
-                "type": "leaf",
-                "status": "healthy"
-              },
-              {
-                "id": "DoubleEntryValidator_Rule_Validator",
-                "name": "DoubleEntryValidator (Debits = Credits) - Rule & Schema Validator",
-                "geneticCode": "0001",
-                "type": "leaf",
-                "status": "healthy"
-              },
-              {
-                "id": "DoubleEntryValidator_MCP_Exporter",
-                "name": "DoubleEntryValidator (Debits = Credits) - Telemetry & MCP Exporter",
-                "geneticCode": "0002",
-                "type": "leaf",
-                "status": "healthy"
-              }
-            ]
-          },
-          {
-            "id": "JournalEntryLogger",
-            "name": "JournalEntryLogger (Sub-second audit)",
-            "geneticCode": "001",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "SubLedgerReconciler",
-            "name": "SubLedgerReconciler (Bank & AR/AP Match)",
-            "geneticCode": "002",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "AuditTrailSigner",
-            "name": "AuditTrailSigner (SHA-256 Checksum)",
-            "geneticCode": "003",
-            "type": "leaf",
-            "status": "healthy"
-          }
-        ]
-      },
-      {
-        "id": "Chart_of_Accounts",
-        "name": "Chart of Accounts Manager (COA)",
-        "geneticCode": "01",
-        "type": "branch",
-        "status": "healthy",
-        "children": [
-          {
-            "id": "AssetAccounts",
-            "name": "Asset Accounts (Cash, AR, Equipment)",
-            "geneticCode": "010",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "LiabilityAccounts",
-            "name": "Liability Accounts (AP, VAT Payable, Debt)",
-            "geneticCode": "011",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "EquityAccounts",
-            "name": "Equity Accounts (Owner Capital, Retained Earnings)",
-            "geneticCode": "012",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "RevenueExpenseAccounts",
-            "name": "Revenue & Expense Accounts (Operating/Non-Op)",
-            "geneticCode": "013",
-            "type": "leaf",
-            "status": "healthy"
-          }
-        ]
-      },
-      {
-        "id": "Invoicing_and_Tax_Module",
-        "name": "Invoicing & VAT Tax Module",
-        "geneticCode": "02",
-        "type": "branch",
-        "status": "healthy",
-        "children": [
-          {
-            "id": "InvoiceGenerator",
-            "name": "InvoiceGenerator (Customer Billing)",
-            "geneticCode": "020",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "VAT20Calculator",
-            "name": "VAT 20% Tax Calculator",
-            "geneticCode": "021",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "RecurringBillingEngine",
-            "name": "RecurringBillingEngine (Subscriptions)",
-            "geneticCode": "022",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "TaxReturnExporter",
-            "name": "TaxReturnExporter (GAAP / IFRS)",
-            "geneticCode": "023",
-            "type": "leaf",
-            "status": "healthy"
-          }
-        ]
-      },
-      {
-        "id": "Financial_Statements",
-        "name": "Financial Statements & Reporting Engine",
-        "geneticCode": "03",
-        "type": "branch",
-        "status": "healthy",
-        "children": [
-          {
-            "id": "IncomeStatement",
-            "name": "Income Statement (Profit & Loss)",
-            "geneticCode": "030",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "BalanceSheet",
-            "name": "Balance Sheet (Assets = Liabilities + Equity)",
-            "geneticCode": "031",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "TrialBalance",
-            "name": "Trial Balance Summary Generator",
-            "geneticCode": "032",
-            "type": "leaf",
-            "status": "healthy"
-          },
-          {
-            "id": "CashFlowStatement",
-            "name": "Cash Flow Statement (Op, Inv, Fin)",
-            "geneticCode": "033",
-            "type": "leaf",
-            "status": "healthy"
-          }
-        ]
+        "content": "TypedValue(tag=<ValueTag.Unknown: 'Unknown'>, valu...",
+        "status": "completed",
+        "result": "TypedValue(tag=<ValueTag.Unknown: 'Unknown'>, value=None, meta={'text': 'dry_run'})"
       }
     ]
   },
-  "files": {
-    "software_factory.flow": "// Real Software Flow for economic\nflow \"factory_economic\" {\n  using teams [\"software_engineers\", \"qa_auditors\"]\n}",
-    "ide_state.json": "{\"status\": \"live\"}"
+  "chain": [],
+  "tree": {
+    "id": "root",
+    "name": "main",
+    "geneticCode": "0",
+    "type": "root",
+    "status": "healthy",
+    "children": []
   },
-  "resources": {
-    "quote": {
-      "output": {
-        "symbol": "BITCOIN",
-        "price_usd": 77409,
-        "change_24h_percent": -1.07,
-        "volume_24h_usd": 18680451768.22,
-        "source": "CoinGecko Live API",
-        "status": "LIVE_DATA"
-      }
-    },
-    "var": {
-      "output": {
-        "portfolio_value_usd": 1000000.0,
-        "confidence_level": 0.99,
-        "holding_period_days": 1,
-        "daily_var_usd": 51172.0,
-        "expected_shortfall_cvar_usd": 58847.8,
-        "var_ratio_percent": 5.12,
-        "risk_verdict": "ACCEPTABLE"
-      }
-    }
-  },
-  "timestamp": 1788134011.463699
+  "files": [],
+  "resources": {},
+  "lastUpdate": "13:40:05"
 }
