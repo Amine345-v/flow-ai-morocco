@@ -1,4 +1,4 @@
-const { FlowWorker, FlowResult } = require('../../debug/run/sdk/js');
+const { FlowWorker, FlowResult } = require('../../sdk/js');
 const fs = require('fs');
 const path = require('path');
 
@@ -12,7 +12,8 @@ worker.on("Try", async (args, kwargs, ctx) => {
     const spec = kwargs.spec;
 
     if (action === "implement") {
-        console.log(`[Developer] Receiving Spec: ${spec.output.title}`);
+        const specTitle = spec && spec.output ? spec.output.title : (spec ? String(spec) : "Standard Spec");
+        console.log(`[Developer] Receiving Spec: ${specTitle}`);
         console.log("[Developer] Writing code in 'dist/'...");
 
         // Generate Code based on Spec

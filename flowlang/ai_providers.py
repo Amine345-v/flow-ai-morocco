@@ -99,34 +99,60 @@ def _with_retries(fn, retries: int = 2, base_delay: float = 0.5):
     raise last_exc  # type: ignore
 
 
-def _system_prompt(verb: str, maestro_path: Optional[str] = None, structural_gap: Optional[str] = None, critical_features: Optional[List[Any]] = None) -> str:
+def _system_prompt(
+    verb: str,
+    maestro_path: Optional[str] = None,
+    structural_gap: Optional[str] = None,
+    critical_features: Optional[List[Any]] = None,
+    team: Optional[str] = None,
+    flow_name: Optional[str] = None,
+    query_text: Optional[str] = None
+) -> str:
     path_ctx = f"\n[Maestro Context: Binary Path {maestro_path}]" if maestro_path else ""
     if structural_gap:
         path_ctx += f"\n[REFINEMENT GOVERNANCE - STRUCTURAL GAP REPORT: {structural_gap}]"
     if critical_features:
         path_ctx += f"\n[COMMANDING TRACES (الأثر الأمري) MUST BE STRICTLY SATISFIED: {json.dumps(critical_features)}]"
 
+    soul_ctx = ""
+    if team:
+        try:
+            from .persona import SoulManager
+            sm = SoulManager()
+            soul_ctx = sm.format_soul_prompt_header(team)
+        except Exception:
+            pass
+
+    memory_ctx = ""
+    if flow_name or query_text:
+        try:
+            from .memory import HermesMemoryStore
+            ms = HermesMemoryStore()
+            memory_ctx = ms.format_memory_prompt_context(query=query_text or verb, flow_name=flow_name or "")
+        except Exception:
+            pass
+
+    skill_ctx = ""
+    if team:
+        try:
+            from .skills import SkillManager
+            sk = SkillManager()
+            skill_ctx = sk.format_skill_prompt_context(team_name=team, query_text=query_text or verb)
+        except Exception:
+            pass
+
     if verb == "ask":
-        return (
-            "You are a helpful assistant. Respond with JSON: {\n"
-            "  \"text\": string,\n  \"history\": array\n}" + path_ctx
-        )
-    if verb == "search":
-        return (
-            "You are an information retrieval agent. Respond with JSON: {\n"
-            "  \"hits\": array of strings\n}" + path_ctx
-        )
-    if verb == "try":
-        return (
-            "Execute a task and report results as JSON: {\n"
-            "  \"output\": string,\n  \"metrics\": {\"time\": number}\n}" + path_ctx
-        )
-    if verb == "judge":
-        return (
-            "Evaluate and respond with JSON: {\n"
-            "  \"score\": number,\n  \"confidence\": number,\n  \"pass\": boolean\n}" + path_ctx
-        )
-    return "You are an AI that executes commands. Prefer JSON outputs." + path_ctx
+        base_instructions = "You are a helpful assistant. Respond with JSON: {\n  \"text\": string,\n  \"history\": array\n}"
+    elif verb == "search":
+        base_instructions = "You are an information retrieval agent. Respond with JSON: {\n  \"hits\": array of strings\n}"
+    elif verb == "try":
+        base_instructions = "Execute a task and report results as JSON: {\n  \"output\": string,\n  \"metrics\": {\"time\": number}\n}"
+    elif verb == "judge":
+        base_instructions = "Evaluate and respond with JSON: {\n  \"score\": number,\n  \"confidence\": number,\n  \"pass\": boolean\n}"
+    else:
+        base_instructions = "You are an AI that executes commands. Prefer JSON outputs."
+
+    return f"{soul_ctx}{skill_ctx}{memory_ctx}{base_instructions}{path_ctx}"
 
 
 def _build_user_payload(team: str, verb: str, args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
@@ -433,7 +459,10 @@ class GeminiProvider(AIProvider):
                         verb,
                         maestro_path=kwargs.get("maestro_path"),
                         structural_gap=kwargs.get("structural_gap"),
-                        critical_features=kwargs.get("critical_features")
+                        critical_features=kwargs.get("critical_features"),
+                        team=team,
+                        flow_name=kwargs.get("flow_name"),
+                        query_text=str(args[0]) if args else None
                     )
                     prompt = f"SYSTEM:\n{system}\n\nUSER:\n{json.dumps(user_payload)}"
 

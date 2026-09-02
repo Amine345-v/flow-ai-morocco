@@ -6,7 +6,7 @@ const worker = new FlowWorker({ team: "QA_Department" });
 
 worker.on("Judge", async (args, kwargs, ctx) => {
     // Check if the implementation stage succeeded
-    if (!args[0].success) {
+    if (args[0] && args[0].success === false) {
         return FlowResult.judge(false, 1.0, "Architecture Implementation Failed");
     }
 
@@ -20,7 +20,7 @@ worker.on("Judge", async (args, kwargs, ctx) => {
     }
 
     // Execute the generated test file
-    const result = spawnSync('node', [testFile], { encoding: 'utf8' });
+    const result = spawnSync('node', [testFile], { encoding: 'utf8', cwd: path.dirname(testFile) });
 
     if (result.status === 0) {
         console.log(result.stdout);

@@ -1,4 +1,4 @@
-flow "accounting_erp_system" {
+flow accounting_erp_system {
   using teams [
     "financial_architects",
     "ledger_engineers",

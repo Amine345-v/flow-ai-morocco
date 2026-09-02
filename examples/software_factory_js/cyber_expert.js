@@ -5,7 +5,7 @@ async function handleCommand() {
     const input = JSON.parse(fs.readFileSync(0, 'utf-8'));
     const { verb, team, target } = input;
 
-    if (verb === 'judge' && team === 'CyberExpert') {
+    if (verb === 'judge' && (team === 'CyberExpert' || team === 'cyber_expert')) {
         const distDir = path.resolve(__dirname, 'dist');
         const logs = [`[SCAN] Inspecting origin: ${distDir}`];
         let vulnerabilities = [];

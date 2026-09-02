@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Accountant ERP Architecture Blueprint",
+  "version": "3.0.0",
+  "domain": "economic",
+  "architectureStyle": "Event-Driven Modular Monolith",
+  "services": [
+    {
+      "name": "GeneralLedgerService",
+      "port": 8081,
+      "protocol": "gRPC",
+      "status": "HEALTHY"
+    },
+    {
+      "name": "TaxInvoicingService",
+      "port": 8082,
+      "protocol": "HTTP/2",
+      "status": "HEALTHY"
+    },
+    {
+      "name": "AuditTrailService",
+      "port": 8083,
+      "protocol": "AsyncEventBus",
+      "status": "HEALTHY"
+    }
+  ],
+  "database": {
+    "engine": "PostgreSQL 16",
+    "tables": [
+      "enterprise_tenants",
+      "chart_of_accounts",
+      "journal_entries",
+      "journal_lines",
+      "audit_log"
+    ]
+  },
+  "security": {
+    "zeroTrust": true,
+    "encryptionAtRest": "AES-256-GCM",
+    "tokenAuth": "OAuth2 / OIDC JWT"
+  }
+}

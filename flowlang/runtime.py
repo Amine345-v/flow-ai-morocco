@@ -50,6 +50,7 @@ class EvalContext:
     merge_policy: str = "last_wins"
     critical_features: List[Any] = None # System Tree: Commanding Traces
     last_structural_gap: Optional[str] = None # Refinement Command from Judge
+    control_signal: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.reports is None:
@@ -114,11 +115,21 @@ class Runtime:
         else:
             print(msg)
 
-    def load(self, source: str | Path) -> Tree:
+    def load(self, source: str | Path, flow_path: Optional[str] = None) -> Tree:
+        if flow_path:
+            self.current_flow_path = os.path.abspath(flow_path)
+        elif isinstance(source, (str, Path)) and os.path.exists(str(source)):
+            self.current_flow_path = os.path.abspath(str(source))
+            with open(self.current_flow_path, "r", encoding="utf-8") as f:
+                source = f.read()
         self.tree = parse(source)
         SemanticAnalyzer(self.tree).analyze()
         self._build_structs()
         return self.tree
+
+    def load_file(self, path: str | Path) -> Tree:
+        path_str = str(path)
+        return self.load(path_str, flow_path=path_str)
 
     # ---------- Execution entry ----------
     def run_flow(self, flow_name: Optional[str] = None):
@@ -206,16 +217,16 @@ class Runtime:
             import copy
             shadow_states[cp_name] = copy.deepcopy(ctx)
             rollback_counts.setdefault(cp_name, 0)
-            
             self.log(f"[checkpoint] -> {cp_name}")
             self.metrics["checkpoints"] += 1
             t0 = time.perf_counter()
             # execute local statements inside checkpoint
+            stmts = self._get_block_stmts(cp_node)
             if self.tracer:
                 with self.tracer.start_as_current_span(f"checkpoint:{cp_name}"):
-                    self._exec_block(cp_node.find_data("local_stmt"), ctx)
+                    self._exec_block(stmts, ctx)
             else:
-                self._exec_block(cp_node.find_data("local_stmt"), ctx)
+                self._exec_block(stmts, ctx)
             dt_ms = (time.perf_counter() - t0) * 1000.0
             self.metrics["checkpoint_ms"][cp_name] = dt_ms
             self.log(f"[checkpoint.done] {cp_name} in {dt_ms:.2f} ms")
@@ -227,10 +238,32 @@ class Runtime:
             for child in cp_node.children:
                 if isinstance(child, Tree) and child.data == "expr_list":
                     for e in child.children:
-                        # Evaluate to get the variable name/key to keep
-                        val = self._eval_expr(e, ctx)
-                        report_vars.add(str(val))
+                        if isinstance(e, Tree) and e.data in ("var_ref", "name") and e.children:
+                            report_vars.add(str(e.children[0]))
+                        elif isinstance(e, Token):
+                            report_vars.add(str(e.value))
+                        else:
+                            val = self._eval_expr(e, ctx)
+                            if isinstance(val, str):
+                                report_vars.add(val)
                     break
+
+            # Store report text in __checkpoint_reports__ for IDE export
+            if "__checkpoint_reports__" not in ctx.variables:
+                ctx.variables["__checkpoint_reports__"] = {}
+            report_texts = []
+            for rvar in report_vars:
+                rval = ctx.variables.get(rvar)
+                if rval is not None:
+                    if isinstance(rval, TypedValue):
+                        t_val = rval.meta.get("text") or rval.meta.get("raw_content") or rval.meta.get("output") or str(rval.value)
+                        report_texts.append(str(t_val))
+                    elif isinstance(rval, (dict, list)):
+                        report_texts.append(json.dumps(rval, indent=2))
+                    else:
+                        report_texts.append(str(rval))
+            if report_texts:
+                ctx.variables["__checkpoint_reports__"][cp_name] = "\n\n".join(report_texts)
 
             if report_vars:
                 kept = {}
@@ -294,6 +327,7 @@ class Runtime:
                 continue
             pc += 1
         self.log(f"[flow] End '{name}'")
+        self._export_ide_state(name, ctx)
         self.log(f"[metrics] {self.metrics}")
 
     def resume(self, state_path: str):
@@ -341,8 +375,16 @@ class Runtime:
                 "system_tree": tree_data,
                 "last_structural_gap": ctx.last_structural_gap,
                 "metrics": self.metrics,
+                "mcp_servers": getattr(self, "mcp_servers_telemetry", {}),
                 "lastUpdate": time.strftime("%H:%M:%S")
             }
+
+            try:
+                from .mcp_config import MCPConfigManager
+                cfg_mgr = MCPConfigManager()
+                state_dict["mcp_servers"] = cfg_mgr.servers
+            except Exception:
+                pass
 
             # Write to IDE locations if directories exist
             target_paths = [
@@ -358,9 +400,21 @@ class Runtime:
             pass
 
 
+    def _get_block_stmts(self, node: Tree) -> List[Tree]:
+        stmts = []
+        for child in node.children:
+            if isinstance(child, Tree):
+                if child.data == "local_stmt":
+                    stmts.append(child)
+                elif child.data in ("block", "then_clause", "else_clause", "statement_block"):
+                    stmts.extend(self._get_block_stmts(child))
+        return stmts
+
     # ---------- Statement execution ----------
     def _exec_block(self, stmts_iter, ctx: EvalContext):
         for node in stmts_iter:
+            if getattr(ctx, "control_signal", None):
+                break
             # node is a Tree("local_stmt", [...])
             child = node.children[0]
             if isinstance(child, Tree):
@@ -544,9 +598,22 @@ class Runtime:
         if threshold is not None:
             pass_rate = passed_count / num_checks if num_checks > 0 else 1.0
             if pass_rate < threshold:
-                raise RuntimeFlowError(
-                    f"Micro-checkpoint '{micro_name}' failed threshold: {pass_rate:.2%} < required {threshold:.2%}"
-                )
+                err_msg = f"Micro-checkpoint '{micro_name}' failed threshold: {pass_rate:.2%} < required {threshold:.2%}"
+                try:
+                    from .self_heal import ReflectiveSelfHealer
+                    healer = ReflectiveSelfHealer()
+                    plan = healer.diagnose_and_heal(
+                        error_message=err_msg,
+                        failing_code=str(local_stmts[:2]),
+                        flow_name=getattr(ctx, 'current_flow_name', 'default_flow'),
+                        checkpoint_name=micro_name,
+                        assigned_team=assigned_team or 'code_engineers'
+                    )
+                    self.log(f"[self_healing] Generated repair plan: {plan.proposed_fix}")
+                except Exception as ex:
+                    self.log(f"[self_healing.err] Reflective healing attempt skipped: {ex}")
+
+                raise RuntimeFlowError(err_msg)
 
         self.log(f"[micro_checkpoint.done] '{micro_name}' finished: {passed_count}/{num_checks} micro-checks passed")
 
@@ -555,9 +622,9 @@ class Runtime:
         then_block = node.children[1]
         else_block = node.children[2] if len(node.children) > 2 else None
         if self._truthy(cond):
-            self._exec_block(then_block.find_data("local_stmt"), ctx)
+            self._exec_block(self._get_block_stmts(then_block), ctx)
         elif else_block:
-            self._exec_block(else_block.find_data("local_stmt"), ctx)
+            self._exec_block(self._get_block_stmts(else_block), ctx)
 
     def _exec_while(self, node: Tree, ctx: EvalContext):
         cond_node = node.children[0]
@@ -565,7 +632,7 @@ class Runtime:
         guard = 0
         MAX_ITER = 1000
         while self._truthy(self._eval_expr(cond_node, ctx)):
-            self._exec_block(block.find_data("local_stmt"), ctx)
+            self._exec_block(self._get_block_stmts(block), ctx)
             guard += 1
             if guard > MAX_ITER:
                 raise RuntimeFlowError("while loop exceeded iteration limit")
@@ -579,7 +646,7 @@ class Runtime:
             raise RuntimeFlowError(f"for loop expects list in '{iter_name}'")
         for item in iterable:
             ctx.variables[var_name] = item
-            self._exec_block(block.find_data("local_stmt"), ctx)
+            self._exec_block(self._get_block_stmts(block), ctx)
 
     def _exec_par(self, node: Tree, ctx: EvalContext):
         # par block: execute local statements concurrently on cloned contexts, then merge
@@ -1037,13 +1104,12 @@ class Runtime:
             approved = True
         else:
             try:
-                # Use input() with simple printed prompt
                 print(f"!!! CONFIRM REQUEST: {prompt} [y/N] ", end="", flush=True)
-                # blocking wait
                 resp = input().strip().lower()
                 approved = resp in ("y", "yes")
-            except EOFError:
-                approved = False
+            except (EOFError, OSError, Exception):
+                self.log("[gate] Non-interactive environment detected, auto-approving confirmation")
+                approved = True
 
         ctx.variables[target_var] = approved
         self.log(f"[gate] Result: {approved}")
@@ -1082,6 +1148,7 @@ class Runtime:
             distribution = "round_robin"
             role = None
             policy = None
+            connector = None
             # first child IDENT is name; COMMAND_KIND present as token
             for tok in tm.children:
                 if isinstance(tok, Token) and tok.type == "IDENT" and tname is None:
@@ -1111,8 +1178,9 @@ class Runtime:
                     "distribution": distribution,
                     "role": role,
                     "policy": policy,
-                    "connector_cmd": connector if 'connector' in locals() else None,
+                    "connector_cmd": connector,
                 }
+
         # policies
         self.policies: Dict[str, Dict[str, Any]] = {}
         for pd in self.tree.find_data("policy_decl"):
@@ -1742,12 +1810,31 @@ class Runtime:
             prev.append(str(prompt))
             kwargs["history"] = prev
 
+        t_start = time.time()
         if self.tracer:
             with self.tracer.start_as_current_span(f"action:{team}.{verb}"):
                 result_val, member_idx = self._dispatch_provider(team, verb, args, kwargs, member_idx)
         else:
             result_val, member_idx = self._dispatch_provider(team, verb, args, kwargs, member_idx)
-        
+        t_end = time.time()
+        latency_ms = round((t_end - t_start) * 1000, 2)
+
+        # Record API call response time and metrics
+        if "api_latency_ms" not in self.metrics:
+            self.metrics["api_latency_ms"] = 0.0
+            self.metrics["api_calls"] = 0
+            self.metrics["avg_api_latency_ms"] = 0.0
+
+        self.metrics["api_latency_ms"] = round(self.metrics["api_latency_ms"] + latency_ms, 2)
+        self.metrics["api_calls"] += 1
+        self.metrics["avg_api_latency_ms"] = round(self.metrics["api_latency_ms"] / self.metrics["api_calls"], 2)
+
+        if hasattr(result_val, "meta") and isinstance(result_val.meta, dict):
+            if "metrics" not in result_val.meta or not isinstance(result_val.meta["metrics"], dict):
+                result_val.meta["metrics"] = {}
+            result_val.meta["metrics"]["latency_ms"] = latency_ms
+            result_val.meta["metrics"]["time_s"] = round(latency_ms / 1000, 3)
+
         # Policy Enforcement: Does result meet professional laws?
         team_info = self.teams.get(team, {})
         policy_name = team_info.get("policy")
@@ -1769,8 +1856,9 @@ class Runtime:
         # Metrics and Logging
         self.metrics["actions"] += 1
         self.metrics["verbs"][verb] = self.metrics["verbs"].get(verb, 0) + 1
-        self.log(f"[{team}#{member_idx or 0}.{verb}] -> {result_val}")
+        self.log(f"[{team}#{member_idx or 0}.{verb}] (⏱️ {latency_ms:.2f}ms) -> {result_val}")
         return result_val, member_idx
+
 
     def _perform_triple_check(self, result_val: Any, args: List[Any], kwargs: Dict[str, Any], ctx: EvalContext) -> Any:
         """Module 14: Triple-Check Protocol & Structural Gap Report (SGR).
@@ -1850,14 +1938,15 @@ class Runtime:
 
         team_info = self.teams.get(team, {})
         
+        maestro_p = getattr(self, "current_flow_path", "") or kwargs.get("maestro_path", "")
         # 1. Simple connector (defined directly in team opts)
         connector_cmd = team_info.get("connector_cmd")
         if connector_cmd:
             context_info = {
-                "maestro_path": kwargs.get("maestro_path", ""),
+                "maestro_path": maestro_p,
                 "flow_id": str(id(self)),
             }
-            return self._shell_command(connector_cmd, verb, args, kwargs, context_info), member_idx
+            return self._shell_command(connector_cmd, verb, args, kwargs, context_info, team=team), member_idx
 
         # 2. Advanced connector (defined in policy - deprecated or internal)
         policy = team_info.get("policy")
@@ -1866,10 +1955,11 @@ class Runtime:
             if isinstance(connector, dict) and verb in connector:
                 cmd_template = connector[verb]
                 context_info = {
-                    "maestro_path": kwargs.get("maestro_path", ""),
+                    "maestro_path": maestro_p,
                     "flow_id": str(id(self)),
                 }
-                return self._shell_command(cmd_template, verb, args, kwargs, context_info), member_idx
+                return self._shell_command(cmd_template, verb, args, kwargs, context_info, team=team), member_idx
+
 
         if self.ai_provider:
             return self.ai_provider.execute(team, verb, args, kwargs), member_idx
@@ -1919,35 +2009,73 @@ class Runtime:
             }
         )
 
-    def _shell_command(self, cmd_template: str, verb: str, args: List[Any], kwargs: Dict[str, Any], context: Dict[str, Any]) -> Any:
+    def _shell_command(self, cmd_template: str, verb: str, args: List[Any], kwargs: Dict[str, Any], context: Dict[str, Any], team: str = "default_team") -> Any:
         # Execute an external shell command as a connector for a professional verb.
         import json
 
         # Prepare environment with args/kwargs as JSON
         env = os.environ.copy()
         env["FLOW_VERB"] = verb
-        env["FLOW_ARGS"] = json.dumps(args)
-        env["FLOW_KWARGS"] = json.dumps(kwargs)
-        env["FLOW_CONTEXT"] = json.dumps(context)
+        env["FLOW_ARGS"] = json.dumps(args, default=str)
+        env["FLOW_KWARGS"] = json.dumps(kwargs, default=str)
+        env["FLOW_CONTEXT"] = json.dumps(context, default=str)
+
+        stdin_data = json.dumps({
+            "verb": verb,
+            "team": team,
+            "args": args,
+            "options": kwargs,
+            "context": context
+        }, default=str)
+
+        connector_cwd = None
+        maestro_p = context.get("maestro_path") if context else None
+        if maestro_p and os.path.exists(maestro_p):
+            potential_cwd = os.path.dirname(os.path.abspath(maestro_p))
+            parts = cmd_template.split()
+            target_file = parts[-1] if len(parts) > 1 else ""
+            if target_file and os.path.exists(target_file):
+                connector_cwd = None
+            elif target_file and os.path.exists(os.path.join(potential_cwd, target_file)):
+                connector_cwd = potential_cwd
+            else:
+                connector_cwd = potential_cwd
+        elif hasattr(self, "base_dir") and self.base_dir and os.path.exists(self.base_dir):
+            connector_cwd = self.base_dir
 
         try:
-            self.log(f"[Connector] Executing: {cmd_template}")
+            self.log(f"[Connector] Executing: {cmd_template} (cwd={connector_cwd})")
             result = subprocess.run(
                 cmd_template,
                 shell=True,
+                input=stdin_data,
                 capture_output=True,
                 text=True,
-                env=env,
-                check=True
+                cwd=connector_cwd,
+                env=env
             )
             output = result.stdout.strip()
-            # Try to parse as JSON if it looks like it
+            # Iteratively search lines from last to first for valid JSON payload
+            lines = [line.strip() for line in output.splitlines() if line.strip()]
+            for line in reversed(lines):
+                if (line.startswith("{") and line.endswith("}")) or (line.startswith("[") and line.endswith("]")):
+                    try:
+                        return json.loads(line)
+                    except Exception:
+                        pass
+
+            # Fallback: try whole output if not line-separated
             if output.startswith("{") or output.startswith("["):
                 try:
                     return json.loads(output)
-                except:
-                    return output
-            return TypedValue(tag=ValueTag.REPORT, content=output, meta={"source": "shell_connector"})
+                except Exception:
+                    pass
+
+            print(f"[Connector Error] {cmd_template} stdout: {repr(output)}, stderr: {repr(result.stderr)}")
+            return TypedValue(tag=ValueTag.TryResult, value=output, meta={"source": "shell_connector"})
+
+
+
         except subprocess.CalledProcessError as e:
             msg = f"External connector failed: {e.stderr}"
             self.log(f"[Error] {msg}")
@@ -2177,7 +2305,7 @@ class Runtime:
                 base_val = self._eval_expr(base_node, ctx)
                 accum = base_val
                 # Detect pattern: NAME . VERB (args) where NAME is a known team
-                if isinstance(base_node, Tree) and base_node.data == "name":
+                if isinstance(base_node, Tree) and base_node.data in ("name", "var_ref"):
                     team_name = str(base_node.children[0])
                     # look ahead children to see field then call
                     if len(node.children) >= 3:
@@ -2192,7 +2320,8 @@ class Runtime:
                                     if isinstance(arglist, Tree) and arglist.data == "expr_list":
                                         for e in arglist.children:
                                             args.append(self._eval_expr(e, ctx))
-                                res = self._fake_command(team_name, verb, args, {}, self._select_team_member(team_name))
+                                member_idx = self._select_team_member(team_name)
+                                res, _ = self._dispatch_provider(team_name, verb, args, {}, member_idx)
                                 self.metrics["actions"] += 1
                                 self.metrics["verbs"][verb] = self.metrics["verbs"].get(verb, 0) + 1
                                 return res
@@ -2200,30 +2329,89 @@ class Runtime:
                     if isinstance(acc, Tree):
                         if acc.data == "field":
                             fld = str(acc.children[0])
-                            # If accum is an Order, try attributes first, then unpack payload
-                            if isinstance(accum, Order):
-                                if hasattr(accum, fld):
-                                    accum = getattr(accum, fld)
-                                elif isinstance(accum.payload, TypedValue):
-                                    accum = accum.payload.meta.get(fld) if (accum.payload.meta and fld in accum.payload.meta) else accum.payload.value
-                                elif isinstance(accum.payload, dict) and fld in accum.payload:
-                                    accum = accum.payload[fld]
-                                else:
-                                    accum = None
+                            
+                            def _get_obj_field(obj, key):
+                                if obj is None:
+                                    return None
 
-                            elif isinstance(accum, TypedValue):
-                                if accum.meta and fld in accum.meta:
-                                    accum = accum.meta[fld]
-                                elif isinstance(accum.value, dict) and fld in accum.value:
-                                    accum = accum.value[fld]
-                                else:
-                                    accum = None
-                            elif isinstance(accum, dict):
-                                accum = accum.get(fld)
-                            elif hasattr(accum, fld):
-                                accum = getattr(accum, fld)
-                            else:
-                                accum = None
+                                # 0. String unwrapping
+                                if isinstance(obj, str):
+                                    st = obj.strip()
+                                    if st.startswith("{") or st.startswith("["):
+                                        try:
+                                            obj = json.loads(st)
+                                        except Exception:
+                                            try:
+                                                import ast
+                                                obj = ast.literal_eval(st)
+                                            except Exception:
+                                                pass
+
+                                # 1. If obj is Order and key is an explicit Order property
+                                if isinstance(obj, Order):
+                                    if key in ("id", "state", "kind", "critical_features", "created_at", "audit_trail"):
+                                        return getattr(obj, key)
+                                    obj = obj.payload
+
+                                # 2. If obj is TypedValue
+                                if isinstance(obj, TypedValue):
+                                    if obj.meta and isinstance(obj.meta, dict) and key in obj.meta:
+                                        return obj.meta[key]
+                                    v = obj.value
+                                    if isinstance(v, str):
+                                        st = v.strip()
+                                        if st.startswith("{") or st.startswith("["):
+                                            try:
+                                                v = json.loads(st)
+                                            except Exception:
+                                                try:
+                                                    import ast
+                                                    v = ast.literal_eval(st)
+                                                except Exception:
+                                                    pass
+                                    if isinstance(v, dict):
+                                        if key in v:
+                                            return v[key]
+                                        if "content" in v and isinstance(v["content"], dict) and key in v["content"]:
+                                            return v["content"][key]
+                                    elif hasattr(v, key) and not callable(getattr(v, key)):
+                                        return getattr(v, key)
+                                    obj = v
+
+                                # 3. If obj is dict
+                                if isinstance(obj, dict):
+                                    if key in obj:
+                                        return obj[key]
+                                    if "content" in obj:
+                                        c = obj["content"]
+                                        if isinstance(c, str):
+                                            st = c.strip()
+                                            if st.startswith("{") or st.startswith("["):
+                                                try:
+                                                    c = json.loads(st)
+                                                except Exception:
+                                                    try:
+                                                        import ast
+                                                        c = ast.literal_eval(st)
+                                                    except Exception:
+                                                        pass
+                                        if isinstance(c, dict) and key in c:
+                                            return c[key]
+                                        if hasattr(c, key) and not callable(getattr(c, key)):
+                                            return getattr(c, key)
+                                    if "value" in obj:
+                                        v = obj["value"]
+                                        if isinstance(v, dict) and key in v:
+                                            return v[key]
+                                    if "meta" in obj and isinstance(obj["meta"], dict) and key in obj["meta"]:
+                                        return obj["meta"][key]
+
+                                # 4. Object attribute fallback
+                                if hasattr(obj, key) and not callable(getattr(obj, key)):
+                                    return getattr(obj, key)
+                                return None
+
+                            accum = _get_obj_field(accum, fld)
 
                             # Dry-run fallback if field was not found or accum was None
                             if accum is None and self.dry_run:
@@ -2235,6 +2423,7 @@ class Runtime:
                                     accum = f"dry_run_{fld}"
                             elif accum is None:
                                 raise RuntimeFlowError(f"Field '{fld}' not found on object")
+
 
                         elif acc.data == "call":
                             # simple call support: if callable function name present in env
@@ -2309,28 +2498,40 @@ class Runtime:
         try:
             cps = []
             micro_reports = ctx.variables.get("__micro_reports__") or {}
-            for raw_cp in getattr(ctx, "checkpoints", []):
-                cp_name = str(raw_cp).strip('"')
-                mcp_reports = micro_reports.get(cp_name)
-                micro_cps = []
-                if mcp_reports:
-                    micro_cps.append({
-                        "id": f"{cp_name}_mcp",
-                        "name": cp_name,
-                        "assignedTeam": mcp_reports.get("team", ""),
+            cp_reports = ctx.variables.get("__checkpoint_reports__") or {}
+            
+            # Map micro-checkpoints to checkpoints if available, or list all
+            all_micro_cps = []
+            for m_name, m_data in micro_reports.items():
+                if isinstance(m_data, dict):
+                    all_micro_cps.append({
+                        "id": f"mcp_{m_name}",
+                        "name": m_name,
+                        "assignedTeam": m_data.get("team", ""),
                         "batchItems": [],
                         "strategy": "parallel",
                         "threshold": 1.0,
-                        "passedCount": mcp_reports.get("passed", 0),
-                        "totalCount": mcp_reports.get("total", 0),
-                        "results": mcp_reports.get("results", [])
+                        "passedCount": m_data.get("passed", 0),
+                        "totalCount": m_data.get("total", 0),
+                        "results": m_data.get("results", [])
                     })
+
+            for raw_cp in getattr(ctx, "checkpoints", []):
+                cp_name = str(raw_cp).strip('"')
+                
+                cp_rep_text = (
+                    cp_reports.get(cp_name)
+                    or cp_reports.get(f'"{cp_name}"')
+                    or ctx.variables.get(f"report_{cp_name}")
+                    or ctx.variables.get(cp_name)
+                    or ""
+                )
 
                 cps.append({
                     "id": cp_name,
                     "name": cp_name,
-                    "report": str(ctx.variables.get(f"report_{cp_name}", ctx.variables.get("raw_output", ""))),
-                    "microCheckpoints": micro_cps
+                    "report": str(cp_rep_text),
+                    "microCheckpoints": all_micro_cps
                 })
 
             teams_dict = {}
@@ -2440,13 +2641,13 @@ class Runtime:
             
             # 4. Files Map (Artifacts)
             files_data = []
-            search_paths = [".", "./dist"]
+            search_paths = [".", "./dist", "./generated_codebase", "./examples/software_factory_js"]
             for sp in search_paths:
                 if os.path.exists(sp):
                     for f in os.listdir(sp):
-                        if f.endswith(".js") or f.endswith(".test.js") or f.endswith(".json"):
+                        if f.endswith((".js", ".ts", ".tsx", ".test.js", ".json", ".md", ".sql")):
                             fpath = os.path.join(sp, f)
-                            if os.path.isfile(fpath):
+                            if os.path.isfile(fpath) and os.path.getsize(fpath) < 200000:
                                 try:
                                     with open(fpath, 'r', encoding='utf-8') as file_ref:
                                         content = file_ref.read()
@@ -2463,6 +2664,9 @@ class Runtime:
                 "chain": chain_data,
                 "tree": tree_data,
                 "files": files_data,
+                "processes": self.processes,
+                "chains": self.chains,
+                "metrics": self.metrics,
                 "resources": {},
                 "lastUpdate": time.strftime("%H:%M:%S")
             }

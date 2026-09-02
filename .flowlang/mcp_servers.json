@@ -1,0 +1,52 @@
+{
+  "devops_system": {
+    "command": "python",
+    "args": [
+      "-m",
+      "flowlang.mcp_server"
+    ],
+    "transport": "stdio",
+    "description": "Native FlowLang DevOps & Multi-Domain System MCP Server",
+    "roles": {
+      "code_engineers": {
+        "allow_tools": [
+          "*"
+        ]
+      },
+      "system_architect": {
+        "allow_tools": [
+          "git_status",
+          "list_files",
+          "build_app"
+        ]
+      },
+      "qa_engineers": {
+        "allow_tools": [
+          "git_status",
+          "run_cli",
+          "list_files"
+        ]
+      }
+    }
+  },
+  "local_gateway": {
+    "url": "http://localhost:8088",
+    "transport": "http",
+    "description": "Real MCP Software Gateway HTTP Server",
+    "roles": {
+      "market_researcher": {
+        "allow_tools": [
+          "fetch_quote",
+          "anonymize_patient"
+        ]
+      },
+      "qa_engineers": {
+        "allow_tools": [
+          "nmap_scan",
+          "audit_headers",
+          "emit_ocsf"
+        ]
+      }
+    }
+  }
+}

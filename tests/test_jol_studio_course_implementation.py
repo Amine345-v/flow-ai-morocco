@@ -102,3 +102,22 @@ def test_triple_check_protocol_and_sgr():
     assert sgr_dict["passed"] is False
     assert ctx.last_structural_gap is not None
     assert "Structural Gap Report" in ctx.last_structural_gap
+
+
+def test_api_response_latency_telemetry():
+    """Module 3 & 6: Test API call response latency measurement and telemetry metrics."""
+    rt = Runtime(dry_run=False)
+    rt.ai_provider = None
+    rt.ai_client = None
+
+    ctx = EvalContext(variables={}, checkpoints=[])
+
+    # Execute a fake command through single_action
+    res, idx = rt._execute_single_action("dev_team", "try", ["build feature"], {}, ctx)
+    
+    assert rt.metrics["api_calls"] > 0
+    assert "api_latency_ms" in rt.metrics
+    assert "avg_api_latency_ms" in rt.metrics
+    assert isinstance(rt.metrics["api_latency_ms"], float)
+
+

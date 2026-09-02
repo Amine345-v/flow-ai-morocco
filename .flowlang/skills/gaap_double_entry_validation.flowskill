@@ -1,0 +1,18 @@
+{
+  "name": "gaap_double_entry_validation",
+  "description": "GAAP double-entry ledger calculation and audit trail validation.",
+  "assigned_team": "system_architect",
+  "triggers": [
+    "accounting",
+    "ledger",
+    "erp",
+    "gaap",
+    "journal"
+  ],
+  "procedural_steps": [
+    "Verify SUM(credits) == SUM(debits) for every journal transaction.",
+    "Attach cryptographically verifiable hash to audit log entries.",
+    "Enforce strict decimal precision for financial quantities."
+  ],
+  "success_rate": 0.98
+}

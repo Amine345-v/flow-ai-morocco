@@ -1,0 +1,18 @@
+{
+  "name": "zero_circular_imports_tsx",
+  "description": "TypeScript / React component synthesis policy with isolated interface declarations.",
+  "assigned_team": "code_engineers",
+  "triggers": [
+    "tsx",
+    "react",
+    "typescript",
+    "component",
+    "import"
+  ],
+  "procedural_steps": [
+    "Export all interface types at the top of the file before component declaration.",
+    "Use inline hooks (useState, useEffect) inside functional components.",
+    "Ensure zero relative import cycles across module boundaries."
+  ],
+  "success_rate": 1.0
+}
