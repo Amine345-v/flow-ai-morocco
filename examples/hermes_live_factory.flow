@@ -1,0 +1,40 @@
+// ============================================================================
+// FlowLang — Hermes Autonomous Software Factory Pipeline
+// Real AI-Powered Execution Flow with Hermes Memory, Skills & SOUL Governance
+// ============================================================================
+
+team market_researchers  : Command<Search>      [size=3, distribution=round_robin];
+team system_architects   : Command<Try>         [size=2, distribution=round_robin];
+team code_engineers      : Command<Try>         [size=5, distribution=round_robin];
+team qa_reviewers        : Command<Judge>       [size=3, distribution=round_robin];
+
+flow hermes_software_factory(using: market_researchers, system_architects, code_engineers, qa_reviewers) {
+  context retention: checkpoint;
+  merge_policy: deep_merge;
+
+  // Stage 1: Market Discovery & Intelligence
+  checkpoint "market_discovery" (report: market_intel) {
+    market_intel = market_researchers.search("Top features for cloud microservices API gateway 2026");
+    context.update(market_intel);
+  }
+
+  // Stage 2: System Architecture & Data Schema
+  checkpoint "system_architecture" (report: arch_spec) {
+    arch_spec = system_architects.try("Design REST & GraphQL schema for cloud API gateway");
+    context.update(arch_spec);
+  }
+
+  // Stage 3: Codebase Implementation
+  checkpoint "code_synthesis" (report: codebase) {
+    codebase = code_engineers.try("Synthesize TypeScript API gateway handler with JWT verification and rate limiting");
+    context.update(codebase);
+  }
+
+  // Stage 4: Security & Micro-Checkpoint QA Audit
+  checkpoint "qa_security_audit" (report: qa_verdict) {
+    micro_checkpoint "security_scan" (using: qa_reviewers, threshold: 1.0) {
+      qa_verdict = qa_reviewers.judge("Audit API gateway code for OWASP Top 10 vulnerabilities");
+    }
+    context.update(qa_verdict);
+  }
+}
