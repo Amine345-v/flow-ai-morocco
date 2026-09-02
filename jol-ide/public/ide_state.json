@@ -1,12 +1,40 @@
 {
   "flow": {
-    "id": "audit_flow",
-    "name": "audit_flow",
+    "id": "hermes_software_factory",
+    "name": "hermes_software_factory",
     "usingTeams": [
-      "QATeam"
+      "market_researchers",
+      "system_architects",
+      "code_engineers",
+      "qa_reviewers"
     ],
     "teams": {
-      "QATeam": {
+      "market_researchers": {
+        "kind": "Search",
+        "size": "3",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "None",
+        "_idx": "1"
+      },
+      "system_architects": {
+        "kind": "Try",
+        "size": "2",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "None"
+      },
+      "code_engineers": {
+        "kind": "Try",
+        "size": "5",
+        "distribution": "round_robin",
+        "role": "None",
+        "policy": "None",
+        "connector_cmd": "None"
+      },
+      "qa_reviewers": {
         "kind": "Judge",
         "size": "3",
         "distribution": "round_robin",
@@ -17,27 +45,28 @@
     },
     "checkpoints": [
       {
-        "id": "audit_stage",
-        "name": "audit_stage",
+        "id": "market_discovery",
+        "name": "market_discovery",
+        "report": "None",
+        "microCheckpoints": []
+      },
+      {
+        "id": "system_architecture",
+        "name": "system_architecture",
         "report": "",
-        "microCheckpoints": [
-          {
-            "id": "mcp_auth_check",
-            "name": "auth_check",
-            "assignedTeam": "QATeam",
-            "batchItems": [],
-            "strategy": "parallel",
-            "threshold": 1.0,
-            "passedCount": 1,
-            "totalCount": 1,
-            "results": [
-              {
-                "index": 0,
-                "status": "passed"
-              }
-            ]
-          }
-        ]
+        "microCheckpoints": []
+      },
+      {
+        "id": "code_synthesis",
+        "name": "code_synthesis",
+        "report": "",
+        "microCheckpoints": []
+      },
+      {
+        "id": "qa_security_audit",
+        "name": "qa_security_audit",
+        "report": "",
+        "microCheckpoints": []
       }
     ],
     "currentCheckpointIndex": 0,
@@ -46,7 +75,7 @@
   "chain": [],
   "tree": {
     "id": "root",
-    "name": "audit_flow",
+    "name": "hermes_software_factory",
     "geneticCode": "0",
     "type": "root",
     "status": "healthy",
@@ -167,16 +196,18 @@
   "processes": {},
   "chains": {},
   "metrics": {
-    "actions": 0,
+    "actions": 1,
     "checkpoints": 1,
-    "micro_checkpoints": 1,
-    "micro_checks": 1,
+    "micro_checkpoints": 0,
+    "micro_checks": 0,
     "back_to": 0,
-    "verbs": {},
+    "verbs": {
+      "search": 1
+    },
     "checkpoint_ms": {
-      "\"audit_stage\"": 1.7186000477522612
+      "\"market_discovery\"": 986166.0255999304
     }
   },
   "resources": {},
-  "lastUpdate": "12:58:35"
+  "lastUpdate": "13:32:05"
 }

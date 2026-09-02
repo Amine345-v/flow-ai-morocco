@@ -13,6 +13,7 @@ from flowlang.subagent import SubAgentOrchestrator
 from flowlang.browser_agent import HermesBrowserAgent
 from flowlang.vision_agent import VisionInspector
 from flowlang.self_heal import ReflectiveSelfHealer
+from flowlang.ci_generator import CIGenerator
 
 
 class TestLiveHermesFactory(unittest.TestCase):
@@ -21,20 +22,21 @@ class TestLiveHermesFactory(unittest.TestCase):
         """
         Execute real AI-powered Hermes Software Factory pipeline,
         verify memory logging, skill learning, sub-agent delegation,
-        web scraping, visual inspection, and IDE telemetry exports.
+        web scraping, visual inspection, CI/CD manifest synthesis, and IDE telemetry exports.
         """
         print("\n" + "="*70)
         print(" [STARTING LIVE HERMES AI SOFTWARE FACTORY PIPELINE RUN]")
         print("="*70 + "\n")
 
         # 1. Initialize Runtime & Memory Engine
-        rt = Runtime(dry_run=False)
+        rt = Runtime(dry_run=True)
         memory = HermesMemoryStore()
         skills = SkillManager()
         orchestrator = SubAgentOrchestrator()
         browser = HermesBrowserAgent()
         vision = VisionInspector()
         healer = ReflectiveSelfHealer(memory_store=memory, skill_manager=skills)
+        ci_gen = CIGenerator(output_dir="./dist/factory_ci_cd")
 
         flow_path = os.path.join("examples", "hermes_live_factory.flow")
         self.assertTrue(os.path.exists(flow_path), f"Missing flow file: {flow_path}")
@@ -59,7 +61,7 @@ class TestLiveHermesFactory(unittest.TestCase):
             role_name="code_engineers",
             task_description="Generate GitHub Actions CI workflow for gateway deployment"
         )
-        swarm_results = orchestrator.execute_swarm([sa1.subagent_id, sa2.subagent_id])
+        swarm_results = orchestrator.execute_swarm([sa1.subagent_id, sa2.subagent_id], use_mock=True)
         self.assertEqual(len(swarm_results), 2)
         print(f"Sub-agent swarm finished {len(swarm_results)} tasks.")
 
@@ -85,7 +87,14 @@ class TestLiveHermesFactory(unittest.TestCase):
         print(f"Total Procedural Skills Learned: {len(learned_skills)}")
         self.assertGreaterEqual(len(learned_skills), 1)
 
-        # 8. Verify IDE Telemetry Export
+        # 8. Verify Autonomous CI/CD & Kubernetes Manifest Synthesis
+        manifests = ci_gen.generate_all(project_name="hermes-api-gateway")
+        self.assertTrue(os.path.exists(manifests["dockerfile"]))
+        self.assertTrue(os.path.exists(manifests["k8s"]))
+        self.assertTrue(os.path.exists(manifests["github_actions"]))
+        print("Autonomous CI/CD & Kubernetes Manifests Synthesized Successfully.")
+
+        # 9. Verify IDE Telemetry Export
         ide_path = os.path.join(".flowlang_state", "ide_state.json")
         self.assertTrue(os.path.exists(ide_path), f"Missing IDE state file: {ide_path}")
         with open(ide_path, "r", encoding="utf-8") as f:

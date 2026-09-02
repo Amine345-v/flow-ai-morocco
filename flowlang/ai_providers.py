@@ -44,7 +44,10 @@ except Exception:  # pragma: no cover
     google_genai = None
 
 try:
-    import google.generativeai as genai  # type: ignore
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
+        import google.generativeai as genai  # type: ignore
 except Exception:  # pragma: no cover
     genai = None
 

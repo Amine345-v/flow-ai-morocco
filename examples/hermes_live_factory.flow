@@ -7,8 +7,9 @@ team market_researchers  : Command<Search>      [size=3, distribution=round_robi
 team system_architects   : Command<Try>         [size=2, distribution=round_robin];
 team code_engineers      : Command<Try>         [size=5, distribution=round_robin];
 team qa_reviewers        : Command<Judge>       [size=3, distribution=round_robin];
+team devops_engineers    : Command<Try>         [size=2, distribution=round_robin];
 
-flow hermes_software_factory(using: market_researchers, system_architects, code_engineers, qa_reviewers) {
+flow hermes_software_factory(using: market_researchers, system_architects, code_engineers, qa_reviewers, devops_engineers) {
   context retention: checkpoint;
   merge_policy: deep_merge;
 
@@ -36,5 +37,11 @@ flow hermes_software_factory(using: market_researchers, system_architects, code_
       qa_verdict = qa_reviewers.judge("Audit API gateway code for OWASP Top 10 vulnerabilities");
     }
     context.update(qa_verdict);
+  }
+
+  // Stage 5: Autonomous Cloud CI/CD & Kubernetes Synthesis
+  checkpoint "devops_deployment" (report: cicd_manifests) {
+    cicd_manifests = devops_engineers.try("Synthesize Dockerfile, Kubernetes Deployment and GitHub Actions CI workflow");
+    context.update(cicd_manifests);
   }
 }

@@ -132,14 +132,14 @@ class SubAgentOrchestrator:
         self.subagents[sub_id] = sa
         return sa
 
-    def execute_swarm(self, subagent_ids: List[str], max_workers: int = 4) -> List[Dict[str, Any]]:
+    def execute_swarm(self, subagent_ids: List[str], max_workers: int = 4, use_mock: bool = False) -> List[Dict[str, Any]]:
         """Run multiple sub-agents in parallel using a thread pool."""
         logger.info(f"🐝 [SubAgentOrchestrator] Executing swarm of {len(subagent_ids)} sub-agents...")
         results = []
         targets = [self.subagents[sid] for sid in subagent_ids if sid in self.subagents]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_sa = {executor.submit(sa.execute): sa for sa in targets}
+            future_to_sa = {executor.submit(sa.execute, "subagent_flow", use_mock): sa for sa in targets}
             for future in concurrent.futures.as_completed(future_to_sa):
                 sa = future_to_sa[future]
                 try:
