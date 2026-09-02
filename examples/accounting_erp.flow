@@ -1,69 +1,34 @@
-flow accounting_erp_system {
-  using teams [
-    "financial_architects",
-    "ledger_engineers",
-    "compliance_auditors",
-    "ui_designers"
-  ]
+// ============================================================================
+// FlowLang — Accountant ERP Software Factory
+// ============================================================================
 
-  team "financial_architects" {
-    kind Search
-    size 3
-    distribution round_robin
-    role FinancialAnalyst
-    policy StandardGAAP
+team financial_architects : Command<Search>      [size=3, distribution=round_robin];
+team ledger_engineers     : Command<Try>         [size=5, distribution=round_robin];
+team compliance_auditors  : Command<Judge>       [size=3, distribution=round_robin];
+team ui_designers         : Command<Communicate> [size=2, distribution=round_robin];
+
+flow accounting_erp_system(using: financial_architects, ledger_engineers, compliance_auditors, ui_designers) {
+  context retention: checkpoint;
+  merge_policy: deep_merge;
+
+  checkpoint "discovery_and_coa_setup" (report: coa_spec) {
+    coa_spec = financial_architects.search("define chart of accounts structure: assets, liabilities, equity, revenue, expenses");
+    context.update(coa_spec);
   }
 
-  team "ledger_engineers" {
-    kind Try
-    size 5
-    distribution round_robin
-    role SoftwareEngineer
-    policy CleanCode
+  checkpoint "double_entry_ledger_synthesis" (report: ledger_code) {
+    ledger_code = ledger_engineers.try("synthesize double-entry general ledger with debit credit balance validation");
+    invoicing_code = ledger_engineers.try("build invoicing module with VAT calculation and payment tracking");
+    context.update(ledger_code, invoicing_code);
   }
 
-  team "compliance_auditors" {
-    kind Judge
-    size 3
-    distribution round_robin
-    role CPAAuditor
-    policy StrictBalance
+  checkpoint "financial_statement_audit" (report: audit_report) {
+    audit_report = compliance_auditors.judge("audit income statement balance sheet and trial balance correctness");
+    context.update(audit_report);
   }
 
-  team "ui_designers" {
-    kind Communicate
-    size 2
-    distribution round_robin
-    role ProductDesigner
-    policy HighAesthetics
-  }
-
-  checkpoint "discovery_and_coa_setup" {
-    team "financial_architects" {
-      SEARCH "define chart of accounts structure: assets, liabilities, equity, revenue, expenses"
-      CHECK min_pass = 1.0
-    }
-  }
-
-  checkpoint "double_entry_ledger_synthesis" {
-    team "ledger_engineers" {
-      TRY "synthesize double-entry general ledger with debit credit balance validation"
-      TRY "build invoicing module with VAT calculation and payment tracking"
-      CHECK min_pass = 1.0
-    }
-  }
-
-  checkpoint "financial_statement_audit" {
-    team "compliance_auditors" {
-      JUDGE "audit income statement balance sheet and trial balance correctness" criteria "score"
-      CHECK min_pass = 1.0
-    }
-  }
-
-  checkpoint "production_app_export" {
-    team "ui_designers" {
-      ASK "export complete React Accountant ERP application to JOL Studio workspace"
-      CHECK min_pass = 1.0
-    }
+  checkpoint "production_app_export" (report: erp_app) {
+    erp_app = ui_designers.ask("export complete React Accountant ERP application to JOL Studio workspace");
+    context.update(erp_app);
   }
 }
