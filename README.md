@@ -1,6 +1,6 @@
 # FlowLang (المسير): Programming for Professions
 
-**FlowLang** is a state-of-the-art Domain Specific Language (DSL) designed to transform "LLM Magic" into "Professional Administration." Unlike traditional workflow engines, FlowLang treats AI agents as a specialized workforce, enforcing strict accountability, causal transparency, and hierarchical auditing.
+**FlowLang** is a Domain Specific Language (DSL) designed to transform "LLM Magic" into "Professional Administration." Unlike traditional workflow engines, FlowLang treats AI agents as a specialized workforce, enforcing strict accountability, causal transparency, and hierarchical auditing.
 
 ---
 
